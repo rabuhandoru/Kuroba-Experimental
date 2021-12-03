@@ -37,6 +37,7 @@ import com.github.k1rakishou.chan.core.site.sites.fuuka.sites.Warosu
 import com.github.k1rakishou.chan.core.site.sites.kun8.Kun8
 import com.github.k1rakishou.chan.core.site.sites.lynxchan.Endchan
 import com.github.k1rakishou.chan.core.site.sites.lynxchan.Kohlchan
+import com.github.k1rakishou.chan.core.site.sites.lynxchan.Bbwchan
 import com.github.k1rakishou.model.data.descriptor.SiteDescriptor
 import java.util.*
 
@@ -69,6 +70,7 @@ object SiteRegistry {
     siteClasses.addSiteToSiteClassesMap(Chan370.SITE_NAME, Chan370::class.java)
     siteClasses.addSiteToSiteClassesMap(Endchan.SITE_NAME, Endchan::class.java)
     siteClasses.addSiteToSiteClassesMap(Kohlchan.SITE_NAME, Kohlchan::class.java)
+    siteClasses.addSiteToSiteClassesMap(Bbwchan.SITE_NAME, Bbwchan::class.java)
 
     // A synthetic site which only purpose is to have an order in the global site order for composed
     // catalogs when showing them on the board selection screen.
