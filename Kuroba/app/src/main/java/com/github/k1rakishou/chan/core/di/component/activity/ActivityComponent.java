@@ -29,6 +29,11 @@ import com.github.k1rakishou.chan.features.gesture_editor.AdjustAndroid10Gesture
 import com.github.k1rakishou.chan.features.image_saver.ImageSaverV2OptionsController;
 import com.github.k1rakishou.chan.features.image_saver.ResolveDuplicateImagesController;
 import com.github.k1rakishou.chan.features.image_saver.epoxy.EpoxyDuplicateImageView;
+import com.github.k1rakishou.chan.features.issues.ReportIssueController;
+import com.github.k1rakishou.chan.features.issues.ReviewReportFilesController;
+import com.github.k1rakishou.chan.features.issues.ReviewReportFilesLayout;
+import com.github.k1rakishou.chan.features.issues.ViewFullCrashLogController;
+import com.github.k1rakishou.chan.features.issues.ViewFullReportFileLayout;
 import com.github.k1rakishou.chan.features.login.LoginController;
 import com.github.k1rakishou.chan.features.media_viewer.MediaViewerActivity;
 import com.github.k1rakishou.chan.features.media_viewer.MediaViewerController;
@@ -42,6 +47,8 @@ import com.github.k1rakishou.chan.features.media_viewer.media_view.GifMediaView;
 import com.github.k1rakishou.chan.features.media_viewer.media_view.MpvVideoMediaView;
 import com.github.k1rakishou.chan.features.media_viewer.media_view.ThumbnailMediaView;
 import com.github.k1rakishou.chan.features.media_viewer.media_view.UnsupportedMediaView;
+import com.github.k1rakishou.chan.features.media_viewer.strip.MediaViewerBottomActionStrip;
+import com.github.k1rakishou.chan.features.media_viewer.strip.MediaViewerLeftActionStrip;
 import com.github.k1rakishou.chan.features.my_posts.SavedPostsController;
 import com.github.k1rakishou.chan.features.proxies.ProxyEditorController;
 import com.github.k1rakishou.chan.features.proxies.ProxySetupController;
@@ -58,6 +65,7 @@ import com.github.k1rakishou.chan.features.reply.epoxy.EpoxyAttachNewFileButtonV
 import com.github.k1rakishou.chan.features.reply.epoxy.EpoxyAttachNewFileButtonWideView;
 import com.github.k1rakishou.chan.features.reply.epoxy.EpoxyReplyFileView;
 import com.github.k1rakishou.chan.features.reply_image_search.searx.SearxImageSearchController;
+import com.github.k1rakishou.chan.features.report.Chan4ReportPostController;
 import com.github.k1rakishou.chan.features.search.GlobalSearchController;
 import com.github.k1rakishou.chan.features.search.SearchResultsController;
 import com.github.k1rakishou.chan.features.search.SelectBoardForSearchController;
@@ -69,7 +77,6 @@ import com.github.k1rakishou.chan.features.search.epoxy.EpoxySearchPostDividerVi
 import com.github.k1rakishou.chan.features.search.epoxy.EpoxySearchPostGapView;
 import com.github.k1rakishou.chan.features.search.epoxy.EpoxySearchPostView;
 import com.github.k1rakishou.chan.features.search.epoxy.EpoxySearchSiteView;
-import com.github.k1rakishou.chan.features.search.epoxy.EpoxySelectableBoardItemView;
 import com.github.k1rakishou.chan.features.settings.MainSettingsControllerV2;
 import com.github.k1rakishou.chan.features.settings.SettingsCoordinator;
 import com.github.k1rakishou.chan.features.settings.epoxy.EpoxyBooleanSetting;
@@ -109,7 +116,7 @@ import com.github.k1rakishou.chan.ui.cell.PostCell;
 import com.github.k1rakishou.chan.ui.cell.PostStubCell;
 import com.github.k1rakishou.chan.ui.cell.ThreadStatusCell;
 import com.github.k1rakishou.chan.ui.cell.post_thumbnail.PostImageThumbnailView;
-import com.github.k1rakishou.chan.ui.cell.post_thumbnail.PostImageThumbnailViewContainer;
+import com.github.k1rakishou.chan.ui.cell.post_thumbnail.PostImageThumbnailViewWrapper;
 import com.github.k1rakishou.chan.ui.compose.bottom_panel.KurobaComposeIconPanel;
 import com.github.k1rakishou.chan.ui.controller.AlbumDownloadController;
 import com.github.k1rakishou.chan.ui.controller.AlbumViewController;
@@ -123,12 +130,9 @@ import com.github.k1rakishou.chan.ui.controller.PopupController;
 import com.github.k1rakishou.chan.ui.controller.PostLinksController;
 import com.github.k1rakishou.chan.ui.controller.PostOmittedImagesController;
 import com.github.k1rakishou.chan.ui.controller.RemovedPostsController;
-import com.github.k1rakishou.chan.ui.controller.ReportController;
-import com.github.k1rakishou.chan.ui.controller.ReportProblemController;
 import com.github.k1rakishou.chan.ui.controller.ThreadSlideController;
 import com.github.k1rakishou.chan.ui.controller.ViewThreadController;
-import com.github.k1rakishou.chan.ui.controller.crashlogs.ReviewReportFilesController;
-import com.github.k1rakishou.chan.ui.controller.crashlogs.ViewFullCrashLogController;
+import com.github.k1rakishou.chan.ui.controller.WebViewReportController;
 import com.github.k1rakishou.chan.ui.controller.dialog.KurobaAlertDialogHostController;
 import com.github.k1rakishou.chan.ui.controller.navigation.BottomNavBarAwareNavigationController;
 import com.github.k1rakishou.chan.ui.controller.navigation.SplitNavigationController;
@@ -149,14 +153,11 @@ import com.github.k1rakishou.chan.ui.epoxy.EpoxyTextViewWrapHeight;
 import com.github.k1rakishou.chan.ui.helper.RemovedPostsHelper;
 import com.github.k1rakishou.chan.ui.layout.MrSkeletonLayout;
 import com.github.k1rakishou.chan.ui.layout.PostPopupContainer;
-import com.github.k1rakishou.chan.ui.layout.ReportProblemLayout;
 import com.github.k1rakishou.chan.ui.layout.SearchLayout;
 import com.github.k1rakishou.chan.ui.layout.SplitNavigationControllerLayout;
 import com.github.k1rakishou.chan.ui.layout.ThreadLayout;
 import com.github.k1rakishou.chan.ui.layout.ThreadListLayout;
 import com.github.k1rakishou.chan.ui.layout.ThreadSlidingPaneLayout;
-import com.github.k1rakishou.chan.ui.layout.crashlogs.ReviewReportFilesLayout;
-import com.github.k1rakishou.chan.ui.layout.crashlogs.ViewFullReportFileLayout;
 import com.github.k1rakishou.chan.ui.theme.ArrowMenuDrawable;
 import com.github.k1rakishou.chan.ui.theme.widget.ColorizableBarButton;
 import com.github.k1rakishou.chan.ui.theme.widget.ColorizableButton;
@@ -190,6 +191,7 @@ import com.github.k1rakishou.chan.ui.view.CircularChunkedLoadingBar;
 import com.github.k1rakishou.chan.ui.view.FastScroller;
 import com.github.k1rakishou.chan.ui.view.FloatingMenu;
 import com.github.k1rakishou.chan.ui.view.HidingFloatingActionButton;
+import com.github.k1rakishou.chan.ui.view.InsetAwareLinearLayout;
 import com.github.k1rakishou.chan.ui.view.OptionalSwipeViewPager;
 import com.github.k1rakishou.chan.ui.view.ReplyInputEditText;
 import com.github.k1rakishou.chan.ui.view.ThumbnailView;
@@ -225,7 +227,7 @@ public interface ActivityComponent {
     void inject(PostRepliesPopupController postRepliesPopupController);
     void inject(PostSearchPopupController postSearchPopupController);
     void inject(RemovedPostsController removedPostsController);
-    void inject(ReportController reportController);
+    void inject(WebViewReportController webViewReportController);
     void inject(SitesSetupController sitesSetupController);
     void inject(SplitNavigationController splitNavigationController);
     void inject(StyledToolbarNavigationController styledToolbarNavigationController);
@@ -245,7 +247,7 @@ public interface ActivityComponent {
     void inject(BoardsSetupController boardsSetupController);
     void inject(MainSettingsControllerV2 mainSettingsControllerV2);
     void inject(SiteSettingsController siteSettingsController);
-    void inject(ReportProblemController reportProblemController);
+    void inject(ReportIssueController reportIssueController);
     void inject(ReviewReportFilesController reviewReportFilesController);
     void inject(ViewFullCrashLogController viewFullCrashLogController);
     void inject(FloatingListMenuController floatingListMenuController);
@@ -281,6 +283,7 @@ public interface ActivityComponent {
     void inject(BookmarkGroupSettingsController bookmarkGroupSettingsController);
     void inject(BookmarkGroupPatternSettingsController bookmarkGroupPatternSettingsController);
     void inject(KurobaAlertController kurobaAlertController);
+    void inject(Chan4ReportPostController chan4ReportPostController);
 
     void inject(ColorizableBarButton colorizableBarButton);
     void inject(ColorizableButton colorizableButton);
@@ -339,7 +342,6 @@ public interface ActivityComponent {
     void inject(EpoxyTextViewWrapHeight epoxyTextViewWrapHeight);
     void inject(EpoxyPostLink epoxyPostLink);
     void inject(EpoxyBoardSelectionButtonView epoxyBoardSelectionButtonView);
-    void inject(EpoxySelectableBoardItemView epoxySelectableBoardItemView);
     void inject(EpoxySimpleGroupView epoxySimpleGroupView);
     void inject(EpoxyDuplicateImageView epoxyDuplicateImageView);
     void inject(EpoxyReorderableItemView epoxyReorderableItemView);
@@ -366,7 +368,6 @@ public interface ActivityComponent {
     void inject(AdjustAndroid10GestureZonesView adjustAndroid10GestureZonesView);
     void inject(SettingsCoordinator settingsCoordinator);
     void inject(JsCaptchaCookiesEditorLayout jsCaptchaCookiesEditorLayout);
-    void inject(ReportProblemLayout reportProblemLayout);
     void inject(ReviewReportFilesLayout reviewReportFilesLayout);
     void inject(ViewFullReportFileLayout viewFullReportFileLayout);
     void inject(HidingFloatingActionButton hidingFloatingActionButton);
@@ -391,7 +392,7 @@ public interface ActivityComponent {
     void inject(OptionalSwipeViewPager optionalSwipeViewPager);
     void inject(FastScroller fastScroller);
     void inject(ToolbarMenuItem toolbarMenuItem);
-    void inject(PostImageThumbnailViewContainer postImageThumbnailViewContainer);
+    void inject(PostImageThumbnailViewWrapper postImageThumbnailViewWrapper);
     void inject(ThumbnailMediaView thumbnailMediaView);
     void inject(FullImageMediaView fullImageMediaView);
     void inject(AudioMediaView audioMediaView);
@@ -400,6 +401,8 @@ public interface ActivityComponent {
     void inject(ExoPlayerVideoMediaView exoPlayerVideoMediaView);
     void inject(MpvVideoMediaView mpvVideoMediaView);
     void inject(MediaViewerToolbar mediaViewerToolbar);
+    void inject(MediaViewerBottomActionStrip mediaViewerBottomActionStrip);
+    void inject(MediaViewerLeftActionStrip mediaViewerLeftActionStrip);
     void inject(DvachCaptchaLayout dvachCaptchaLayout);
     void inject(Chan4CaptchaLayout chan4CaptchaLayout);
     void inject(LynxchanCaptchaLayout lynxchanCaptchaLayout);
@@ -407,6 +410,7 @@ public interface ActivityComponent {
     void inject(KurobaComposeIconPanel kurobaComposeIconPanel);
     void inject(ArrowMenuDrawable arrowMenuDrawable);
     void inject(PostPopupContainer postPopupContainer);
+    void inject(InsetAwareLinearLayout insetAwareLinearLayout);
 
     @Subcomponent.Builder
     interface Builder {

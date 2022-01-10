@@ -31,6 +31,15 @@ class ChanPostImage(
   val size: Long = fileSize
     get() = _loadedFileSize ?: field
 
+  val imageSpoilered: Boolean
+    get() {
+      if (ChanSettings.postThumbnailRemoveImageSpoilers.get()) {
+        return false
+      }
+
+      return spoiler
+    }
+
   @get:Synchronized
   @set:Synchronized
   lateinit var ownerPostDescriptor: PostDescriptor
@@ -110,6 +119,10 @@ class ChanPostImage(
       return false
     }
 
+    if (imageSpoilered) {
+      return false
+    }
+
     if (size > MAX_PREFETCH_FILE_SIZE) {
       return false
     }
@@ -138,7 +151,7 @@ class ChanPostImage(
       return AppConstants.HIDDEN_IMAGE_THUMBNAIL_URL
     }
 
-    if (spoiler) {
+    if (imageSpoilered) {
       return spoilerThumbnailUrl
     }
 
@@ -168,8 +181,10 @@ class ChanPostImage(
         append(extension.toUpperCase(Locale.ENGLISH))
       }
 
-      append(StringUtils.UNBREAKABLE_SPACE_SYMBOL)
-      append("${imageWidth}x${imageHeight}")
+      if (imageWidth > 0 || imageHeight > 0) {
+        append(StringUtils.UNBREAKABLE_SPACE_SYMBOL)
+        append("${imageWidth}x${imageHeight}")
+      }
 
       append(StringUtils.UNBREAKABLE_SPACE_SYMBOL)
       append(ChanPostUtils.getReadableFileSize(size).replace(' ', StringUtils.UNBREAKABLE_SPACE_SYMBOL))

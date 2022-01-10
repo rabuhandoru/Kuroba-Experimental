@@ -46,6 +46,11 @@ class PostRepliesAdapter(
     threadCellData.defaultShowDividerFunc = { postIndex: Int, totalPostsCount: Int -> postIndex < totalPostsCount - 1 }
   }
 
+  fun cleanup() {
+    threadCellData.cleanup()
+    notifyDataSetChanged()
+  }
+
   override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ReplyViewHolder {
     return ReplyViewHolder(GenericPostCell(parent.context))
   }
@@ -63,12 +68,7 @@ class PostRepliesAdapter(
   }
 
   override fun getItemId(position: Int): Long {
-    val post = threadCellData.getPostCellData(position).post
-    val repliesFromCount = post.repliesFromCount
-
-    return (repliesFromCount.toLong() shl 32) +
-      post.postNo() +
-      post.postSubNo()
+        return threadCellData.getPostCellData(position).hashForAdapter()
   }
 
   override fun onViewRecycled(holder: ReplyViewHolder) {

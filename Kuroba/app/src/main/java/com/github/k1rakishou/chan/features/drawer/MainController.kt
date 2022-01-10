@@ -20,6 +20,13 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.view.MotionEvent
 import android.view.View
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.FiniteAnimationSpec
+import androidx.compose.animation.core.animateInt
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -45,15 +52,18 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyVerticalGrid
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalDensity
@@ -69,6 +79,7 @@ import coil.transform.CircleCropTransformation
 import com.github.k1rakishou.ChanSettings
 import com.github.k1rakishou.chan.R
 import com.github.k1rakishou.chan.controller.Controller
+import com.github.k1rakishou.chan.core.cache.CacheFileType
 import com.github.k1rakishou.chan.core.di.component.activity.ActivityComponent
 import com.github.k1rakishou.chan.core.helper.DialogFactory
 import com.github.k1rakishou.chan.core.helper.StartActivityStartupHandlerHelper
@@ -87,6 +98,7 @@ import com.github.k1rakishou.chan.core.manager.ThreadDownloadManager
 import com.github.k1rakishou.chan.core.manager.WindowInsetsListener
 import com.github.k1rakishou.chan.core.navigation.HasNavigation
 import com.github.k1rakishou.chan.features.drawer.data.HistoryControllerState
+import com.github.k1rakishou.chan.features.drawer.data.NavHistoryBookmarkAdditionalInfo
 import com.github.k1rakishou.chan.features.drawer.data.NavigationHistoryEntry
 import com.github.k1rakishou.chan.features.image_saver.ImageSaverV2
 import com.github.k1rakishou.chan.features.image_saver.ImageSaverV2OptionsController
@@ -97,11 +109,11 @@ import com.github.k1rakishou.chan.features.thread_downloading.LocalArchiveContro
 import com.github.k1rakishou.chan.ui.compose.ComposeHelpers.simpleVerticalScrollbar
 import com.github.k1rakishou.chan.ui.compose.ImageLoaderRequest
 import com.github.k1rakishou.chan.ui.compose.ImageLoaderRequestData
-import com.github.k1rakishou.chan.ui.compose.KurobaComposeCheckbox
 import com.github.k1rakishou.chan.ui.compose.KurobaComposeErrorMessage
 import com.github.k1rakishou.chan.ui.compose.KurobaComposeIcon
 import com.github.k1rakishou.chan.ui.compose.KurobaComposeImage
 import com.github.k1rakishou.chan.ui.compose.KurobaComposeProgressIndicator
+import com.github.k1rakishou.chan.ui.compose.KurobaComposeSelectionIndicator
 import com.github.k1rakishou.chan.ui.compose.KurobaComposeText
 import com.github.k1rakishou.chan.ui.compose.KurobaSearchInput
 import com.github.k1rakishou.chan.ui.compose.LocalChanTheme
@@ -139,6 +151,7 @@ import com.github.k1rakishou.chan.utils.TimeUtils
 import com.github.k1rakishou.chan.utils.findControllerOrNull
 import com.github.k1rakishou.chan.utils.viewModelByKey
 import com.github.k1rakishou.core_logger.Logger
+import com.github.k1rakishou.core_themes.ChanTheme
 import com.github.k1rakishou.core_themes.ThemeEngine
 import com.github.k1rakishou.model.data.descriptor.ChanDescriptor
 import dagger.Lazy
@@ -253,6 +266,7 @@ class MainController(
   }
 
   private val bottomPadding = mutableStateOf(0)
+  private val drawerOpenedState = mutableStateOf(false)
 
   private val drawerViewModel by lazy {
     requireComponentActivity().viewModelByKey<MainControllerViewModel>()
@@ -387,11 +401,12 @@ class MainController(
     drawerComposeView.setContent {
       ProvideChanTheme(themeEngine) {
         val chanTheme = LocalChanTheme.current
+        val bgColor = chanTheme.backColorCompose
 
         Column(
           modifier = Modifier
             .fillMaxSize()
-            .background(chanTheme.backColorCompose)
+            .background(bgColor)
         ) {
           BuildContent()
         }
@@ -481,10 +496,12 @@ class MainController(
   }
 
   override fun onDrawerOpened(drawerView: View) {
+    drawerOpenedState.value = true
   }
 
   override fun onDrawerClosed(drawerView: View) {
     drawerViewModel.clearSelection()
+    drawerOpenedState.value = false
   }
 
   override fun onDrawerStateChanged(newState: Int) {
@@ -958,7 +975,7 @@ class MainController(
     }
 
     val selectedHistoryEntries = remember { drawerViewModel.selectedHistoryEntries }
-
+    val isLowRamDevice = ChanSettings.isLowRamDevice()
     val padding by bottomPadding
     val contentPadding = remember(key1 = padding) { PaddingValues(bottom = 4.dp + padding.dp) }
 
@@ -988,17 +1005,22 @@ class MainController(
             items(count = searchResults.size) { index ->
               val navHistoryEntry = searchResults[index]
               val isSelectionMode = selectedHistoryEntries.isNotEmpty()
-              val isSelected = selectedHistoryEntries.contains(navHistoryEntry)
+              val isSelected = selectedHistoryEntries.contains(navHistoryEntry.descriptor)
 
-              BuildNavigationHistoryListEntryGridMode(
-                navHistoryEntry = navHistoryEntry,
-                isSelectionMode = isSelectionMode,
-                isSelected = isSelected,
-                onHistoryEntryViewClicked = onHistoryEntryViewClicked,
-                onHistoryEntryViewLongClicked = onHistoryEntryViewLongClicked,
-                onHistoryEntrySelectionChanged = onHistoryEntrySelectionChanged,
-                onNavHistoryDeleteClicked = onNavHistoryDeleteClicked
-              )
+              // Fucking magic
+              key(searchResults[index].descriptor) {
+                BuildNavigationHistoryListEntryGridMode(
+                  searchQuery = query,
+                  navHistoryEntry = navHistoryEntry,
+                  isSelectionMode = isSelectionMode,
+                  isSelected = isSelected,
+                  isLowRamDevice = isLowRamDevice,
+                  onHistoryEntryViewClicked = onHistoryEntryViewClicked,
+                  onHistoryEntryViewLongClicked = onHistoryEntryViewLongClicked,
+                  onHistoryEntrySelectionChanged = onHistoryEntrySelectionChanged,
+                  onNavHistoryDeleteClicked = onNavHistoryDeleteClicked
+                )
+              }
             }
           })
       } else {
@@ -1013,17 +1035,21 @@ class MainController(
             items(count = searchResults.size) { index ->
               val navHistoryEntry = searchResults[index]
               val isSelectionMode = selectedHistoryEntries.isNotEmpty()
-              val isSelected = selectedHistoryEntries.contains(navHistoryEntry)
+              val isSelected = selectedHistoryEntries.contains(navHistoryEntry.descriptor)
 
-              BuildNavigationHistoryListEntryListMode(
-                navHistoryEntry = navHistoryEntry,
-                isSelectionMode = isSelectionMode,
-                isSelected = isSelected,
-                onHistoryEntryViewClicked = onHistoryEntryViewClicked,
-                onHistoryEntryViewLongClicked = onHistoryEntryViewLongClicked,
-                onHistoryEntrySelectionChanged = onHistoryEntrySelectionChanged,
-                onNavHistoryDeleteClicked = onNavHistoryDeleteClicked
-              )
+              key(searchResults[index].descriptor) {
+                BuildNavigationHistoryListEntryListMode(
+                  searchQuery = query,
+                  navHistoryEntry = navHistoryEntry,
+                  isSelectionMode = isSelectionMode,
+                  isSelected = isSelected,
+                  isLowRamDevice = isLowRamDevice,
+                  onHistoryEntryViewClicked = onHistoryEntryViewClicked,
+                  onHistoryEntryViewLongClicked = onHistoryEntryViewLongClicked,
+                  onHistoryEntrySelectionChanged = onHistoryEntrySelectionChanged,
+                  onNavHistoryDeleteClicked = onNavHistoryDeleteClicked
+                )
+              }
             }
           })
       }
@@ -1073,7 +1099,7 @@ class MainController(
               chanTheme = chanTheme,
               themeEngine = themeEngine,
               onBackgroundColor = backgroundColor,
-              searchQuery = searchQuery,
+              searchQueryState = searchQuery,
               onSearchQueryChanged = onSearchQueryChanged
             )
           }
@@ -1106,15 +1132,18 @@ class MainController(
 
   @Composable
   private fun BuildNavigationHistoryListEntryListMode(
+    searchQuery: String,
     navHistoryEntry: NavigationHistoryEntry,
     isSelectionMode: Boolean,
     isSelected: Boolean,
+    isLowRamDevice: Boolean,
     onHistoryEntryViewClicked: (NavigationHistoryEntry) -> Unit,
     onHistoryEntryViewLongClicked: (NavigationHistoryEntry) -> Unit,
     onHistoryEntrySelectionChanged: (Boolean, NavigationHistoryEntry) -> Unit,
     onNavHistoryDeleteClicked: (NavigationHistoryEntry) -> Unit
   ) {
     val chanDescriptor = navHistoryEntry.descriptor
+    val chanTheme = LocalChanTheme.current
 
     val circleCropTransformation = remember(key1 = chanDescriptor) {
       if (chanDescriptor is ChanDescriptor.ICatalogDescriptor) {
@@ -1159,7 +1188,10 @@ class MainController(
             )
           } else {
             ImageLoaderRequest(
-              data = ImageLoaderRequestData.Url(navHistoryEntry.threadThumbnailUrl),
+              data = ImageLoaderRequestData.Url(
+                httpUrl = navHistoryEntry.threadThumbnailUrl,
+                cacheFileType = CacheFileType.NavHistoryThumbnail
+              ),
               transformations = circleCropTransformation
             )
           }
@@ -1177,23 +1209,27 @@ class MainController(
         val showDeleteButtonShortcut by remember { drawerViewModel.showDeleteButtonShortcut }
 
         if (isSelectionMode) {
-          KurobaComposeCheckbox(
-            currentlyChecked = isSelected,
-            onCheckChanged = { checked -> drawerViewModel.selectUnselect(navHistoryEntry, checked) }
+          KurobaComposeSelectionIndicator(
+            size = NAV_HISTORY_DELETE_BTN_SIZE,
+            currentlySelected = isSelected,
+            onSelectionChanged = { checked -> drawerViewModel.selectUnselect(navHistoryEntry, checked) }
           )
         } else if (showDeleteButtonShortcut) {
-          val circleColor = remember { Color(0x80000000L) }
           val shape = remember { CircleShape }
 
-          Image(
+          Box(
             modifier = Modifier
               .align(Alignment.TopStart)
-              .size(20.dp)
+              .size(NAV_HISTORY_DELETE_BTN_SIZE)
               .kurobaClickable(onClick = { onNavHistoryDeleteClicked(navHistoryEntry) })
-              .background(color = circleColor, shape = shape),
-            painter = painterResource(id = R.drawable.ic_clear_white_24dp),
-            contentDescription = null
-          )
+              .background(color = NAV_HISTORY_DELETE_BTN_BG_COLOR, shape = shape)
+          ) {
+            Image(
+              modifier = Modifier.padding(4.dp),
+              painter = painterResource(id = R.drawable.ic_clear_white_24dp),
+              contentDescription = null
+            )
+          }
         }
 
         Column(
@@ -1204,7 +1240,12 @@ class MainController(
         ) {
           val siteIconRequest = remember(key1 = chanDescriptor) {
             if (navHistoryEntry.siteThumbnailUrl != null) {
-              ImageLoaderRequest(ImageLoaderRequestData.Url(navHistoryEntry.siteThumbnailUrl))
+              val data = ImageLoaderRequestData.Url(
+                httpUrl = navHistoryEntry.siteThumbnailUrl,
+                cacheFileType = CacheFileType.SiteIcon
+              )
+
+              ImageLoaderRequest(data = data)
             } else {
               null
             }
@@ -1249,20 +1290,12 @@ class MainController(
       )
 
       if (navHistoryEntry.additionalInfo != null) {
-        val additionalInfo = navHistoryEntry.additionalInfo
-        val additionalInfoString = remember(key1 = additionalInfo) {
-          additionalInfo.toAnnotatedString(themeEngine)
-        }
-
-        KurobaComposeText(
-          modifier = Modifier
-            .wrapContentWidth()
-            .wrapContentHeight()
-            .padding(horizontal = 4.dp),
-          maxLines = 1,
-          overflow = TextOverflow.Ellipsis,
-          fontSize = 16.sp,
-          text = additionalInfoString
+        BuildAdditionalBookmarkInfoText(
+          isLowRamDevice = isLowRamDevice,
+          isListMode = true,
+          searchQuery = searchQuery,
+          additionalInfo = navHistoryEntry.additionalInfo,
+          chanTheme = chanTheme
         )
       }
     }
@@ -1270,19 +1303,27 @@ class MainController(
 
   @Composable
   private fun BuildNavigationHistoryListEntryGridMode(
+    searchQuery: String,
     navHistoryEntry: NavigationHistoryEntry,
     isSelectionMode: Boolean,
     isSelected: Boolean,
+    isLowRamDevice: Boolean,
     onHistoryEntryViewClicked: (NavigationHistoryEntry) -> Unit,
     onHistoryEntryViewLongClicked: (NavigationHistoryEntry) -> Unit,
     onHistoryEntrySelectionChanged: (Boolean, NavigationHistoryEntry) -> Unit,
     onNavHistoryDeleteClicked: (NavigationHistoryEntry) -> Unit
   ) {
     val chanDescriptor = navHistoryEntry.descriptor
+    val chanTheme = LocalChanTheme.current
 
     val siteIconRequest = remember(key1 = chanDescriptor) {
       if (navHistoryEntry.siteThumbnailUrl != null) {
-        ImageLoaderRequest(ImageLoaderRequestData.Url(navHistoryEntry.siteThumbnailUrl))
+        val data = ImageLoaderRequestData.Url(
+          httpUrl = navHistoryEntry.siteThumbnailUrl,
+          cacheFileType = CacheFileType.SiteIcon
+        )
+
+        ImageLoaderRequest(data)
       } else {
         null
       }
@@ -1292,7 +1333,12 @@ class MainController(
       if (navHistoryEntry.isCompositeIconUrl) {
         ImageLoaderRequest(ImageLoaderRequestData.DrawableResource(R.drawable.composition_icon))
       } else {
-        ImageLoaderRequest(ImageLoaderRequestData.Url(navHistoryEntry.threadThumbnailUrl))
+        val data = ImageLoaderRequestData.Url(
+          httpUrl = navHistoryEntry.threadThumbnailUrl,
+          cacheFileType = CacheFileType.NavHistoryThumbnail
+        )
+
+        ImageLoaderRequest(data)
       }
     }
 
@@ -1333,23 +1379,27 @@ class MainController(
         val showDeleteButtonShortcut by remember { drawerViewModel.showDeleteButtonShortcut }
 
         if (isSelectionMode) {
-          KurobaComposeCheckbox(
-            currentlyChecked = isSelected,
-            onCheckChanged = { checked -> drawerViewModel.selectUnselect(navHistoryEntry, checked) }
+          KurobaComposeSelectionIndicator(
+            size = NAV_HISTORY_DELETE_BTN_SIZE,
+            currentlySelected = isSelected,
+            onSelectionChanged = { checked -> drawerViewModel.selectUnselect(navHistoryEntry, checked) }
           )
         } else if (showDeleteButtonShortcut) {
-          val circleColor = remember { Color(0x80000000L) }
           val shape = remember { CircleShape }
 
-          Image(
+          Box(
             modifier = Modifier
               .align(Alignment.TopStart)
-              .size(20.dp)
+              .size(NAV_HISTORY_DELETE_BTN_SIZE)
               .kurobaClickable(onClick = { onNavHistoryDeleteClicked(navHistoryEntry) })
-              .background(color = circleColor, shape = shape),
-            painter = painterResource(id = R.drawable.ic_clear_white_24dp),
-            contentDescription = null
-          )
+              .background(color = NAV_HISTORY_DELETE_BTN_BG_COLOR, shape = shape)
+          ) {
+            Image(
+              modifier = Modifier.padding(4.dp),
+              painter = painterResource(id = R.drawable.ic_clear_white_24dp),
+              contentDescription = null
+            )
+          }
         }
 
         Row(
@@ -1361,8 +1411,7 @@ class MainController(
 
           if (navHistoryEntry.pinned) {
             Image(
-              modifier = Modifier
-                .size(20.dp),
+              modifier = Modifier.size(20.dp),
               painter = painterResource(id = R.drawable.sticky_icon),
               contentDescription = null
             )
@@ -1372,8 +1421,7 @@ class MainController(
             KurobaComposeImage(
               request = siteIconRequest,
               contentScale = ContentScale.Crop,
-              modifier = Modifier
-                .size(20.dp),
+              modifier = Modifier.size(20.dp),
               imageLoaderV2 = imageLoaderV2,
               error = {
                 Image(
@@ -1384,26 +1432,16 @@ class MainController(
               }
             )
           }
-
         }
-
       }
 
       if (navHistoryEntry.additionalInfo != null) {
-        val additionalInfo = navHistoryEntry.additionalInfo
-        val additionalInfoString = remember(key1 = additionalInfo) {
-          additionalInfo.toAnnotatedString(themeEngine)
-        }
-
-        KurobaComposeText(
-          modifier = Modifier
-            .fillMaxWidth()
-            .wrapContentHeight(),
-          maxLines = 1,
-          textAlign = TextAlign.Center,
-          overflow = TextOverflow.Ellipsis,
-          fontSize = 14.sp,
-          text = additionalInfoString
+        BuildAdditionalBookmarkInfoText(
+          isLowRamDevice = isLowRamDevice,
+          isListMode = false,
+          searchQuery = searchQuery,
+          additionalInfo = navHistoryEntry.additionalInfo,
+          chanTheme = chanTheme,
         )
       }
 
@@ -1413,10 +1451,140 @@ class MainController(
           .wrapContentHeight(),
         text = navHistoryEntry.title,
         maxLines = 4,
-        overflow = TextOverflow.Ellipsis,
         fontSize = 12.sp,
         textAlign = TextAlign.Center
       )
+    }
+  }
+
+  @Composable
+  private fun BuildAdditionalBookmarkInfoText(
+    isLowRamDevice: Boolean,
+    isListMode: Boolean,
+    searchQuery: String,
+    additionalInfo: NavHistoryBookmarkAdditionalInfo,
+    chanTheme: ChanTheme
+  ) {
+    val drawerOpened by drawerOpenedState
+
+    // Now this is epic. So what this thing does (and ^ this one above), they receive all changes
+    // to navigation history elements and if the drawer is currently opened display them (with or
+    // without animation depending on settings and other stuff) but if the drawer is currently closed
+    // then the changes are accumulated and the next time the drawer is opened the difference is
+    // displayed. Basically once you open the drawer you will see the changes applied to bookmarks
+    // during the time the drawer was closed.
+    val prevAdditionalInfoState = remember { mutableStateOf(additionalInfo.copy()) }
+    val prevAdditionalInfo by prevAdditionalInfoState
+
+    val currentAdditionalInfo = if (drawerOpened) {
+      additionalInfo
+    } else {
+      prevAdditionalInfo
+    }
+
+    val transition = updateTransition(
+      targetState = currentAdditionalInfo,
+      label = "Text transition animation"
+    )
+
+    val animationDisabled = isLowRamDevice
+      || searchQuery.isNotEmpty()
+      || !drawerOpened
+      || prevAdditionalInfo == currentAdditionalInfo
+
+    val textAnimationSpec: FiniteAnimationSpec<Int> = if (animationDisabled) {
+      // This will disable animations, basically it will switch to the final animation frame right
+      // away
+      snap()
+    } else {
+      tween(durationMillis = TEXT_ANIMATION_DURATION)
+    }
+
+    val newPostsCountAnimated by transition.animateInt(
+      transitionSpec = { textAnimationSpec },
+      label = "New posts animation"
+    ) { info -> info.newPosts }
+    val newQuotesCountAnimated by transition.animateInt(
+      transitionSpec = { textAnimationSpec },
+      label = "New quotes animation"
+    ) { info -> info.newQuotes }
+
+    val additionalInfoString = remember(
+      additionalInfo,
+      chanTheme,
+      newPostsCountAnimated,
+      newQuotesCountAnimated
+    ) {
+      return@remember currentAdditionalInfo.toAnnotatedString(
+        chanTheme = chanTheme,
+        newPostsCount = newPostsCountAnimated,
+        newQuotesCount = newQuotesCountAnimated
+      )
+    }
+
+    val alpha = .35f
+
+    val targetColor = if (transition.isRunning) {
+      when {
+        currentAdditionalInfo.newQuotes > 0 -> {
+          chanTheme.bookmarkCounterHasRepliesColorCompose.copy(alpha = alpha)
+        }
+        currentAdditionalInfo.newPosts > 0 || currentAdditionalInfo.watching -> {
+          chanTheme.bookmarkCounterNormalColorCompose.copy(alpha = alpha)
+        }
+        else -> {
+          chanTheme.bookmarkCounterNotWatchingColorCompose.copy(alpha = alpha)
+        }
+      }
+    } else {
+      Color.Unspecified
+    }
+
+    val shape = if (transition.isRunning) {
+      RoundedCornerShape(4.dp)
+    } else {
+      RectangleShape
+    }
+
+    val bgAnimationSpec: AnimationSpec<Color> = if (animationDisabled) {
+      snap()
+    } else {
+      tween(durationMillis = TEXT_ANIMATION_DURATION)
+    }
+
+    val backgroundColor by animateColorAsState(
+      targetValue = targetColor,
+      animationSpec = bgAnimationSpec
+    )
+
+    if (isListMode) {
+      KurobaComposeText(
+        modifier = Modifier
+          .wrapContentWidth()
+          .wrapContentHeight()
+          .background(color = backgroundColor, shape = shape)
+          .padding(horizontal = 6.dp),
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        fontSize = 16.sp,
+        text = additionalInfoString
+      )
+    } else {
+      KurobaComposeText(
+        modifier = Modifier
+          .fillMaxWidth()
+          .wrapContentHeight()
+          .background(color = backgroundColor, shape = shape),
+        maxLines = 1,
+        textAlign = TextAlign.Center,
+        overflow = TextOverflow.Ellipsis,
+        fontSize = 14.sp,
+        text = additionalInfoString
+      )
+    }
+
+    if (drawerOpened) {
+      prevAdditionalInfoState.value = additionalInfo.copy()
     }
   }
 
@@ -1451,6 +1619,18 @@ class MainController(
       key = ACTION_SHOW_DELETE_SHORTCUT,
       name = getString(R.string.drawer_controller_delete_shortcut),
       isCurrentlySelected = ChanSettings.drawerShowDeleteButtonShortcut.get()
+    )
+
+    drawerOptions += CheckableFloatingListMenuItem(
+      key = ACTION_DELETE_BOOKMARK_WHEN_DELETING_NAV_HISTORY,
+      name = getString(R.string.drawer_controller_delete_bookmark_on_history_delete),
+      isCurrentlySelected = ChanSettings.drawerDeleteBookmarksWhenDeletingNavHistory.get()
+    )
+
+    drawerOptions += CheckableFloatingListMenuItem(
+      key = ACTION_DELETE_NAV_HISTORY_WHEN_BOOKMARK_DELETED,
+      name = getString(R.string.drawer_controller_delete_nav_history_on_bookmark_delete),
+      isCurrentlySelected = ChanSettings.drawerDeleteNavHistoryWhenBookmarkDeleted.get()
     )
 
     drawerOptions += CheckableFloatingListMenuItem(
@@ -1493,6 +1673,12 @@ class MainController(
             }
             ACTION_SHOW_DELETE_SHORTCUT -> {
               drawerViewModel.updateDeleteButtonShortcut(ChanSettings.drawerShowDeleteButtonShortcut.toggle())
+            }
+            ACTION_DELETE_BOOKMARK_WHEN_DELETING_NAV_HISTORY -> {
+              ChanSettings.drawerDeleteBookmarksWhenDeletingNavHistory.toggle()
+            }
+            ACTION_DELETE_NAV_HISTORY_WHEN_BOOKMARK_DELETED -> {
+              ChanSettings.drawerDeleteNavHistoryWhenBookmarkDeleted.toggle()
             }
             ACTION_RESTORE_LAST_VISITED_CATALOG -> {
               ChanSettings.loadLastOpenedBoardUponAppStart.toggle()
@@ -1607,7 +1793,7 @@ class MainController(
               drawerViewModel.clearSelection()
             }
             ACTION_DELETE_SELECTED -> {
-              drawerViewModel.deleteNavElementsByDescriptors(drawerViewModel.getSelectedDescriptors())
+              onNavHistoryDeleteSelectedClicked(drawerViewModel.getSelectedDescriptors())
               drawerViewModel.clearSelection()
             }
             ACTION_DELETE -> {
@@ -1631,12 +1817,28 @@ class MainController(
   }
 
   private suspend fun pinUnpin(descriptors: Collection<ChanDescriptor>) {
+    if (descriptors.isEmpty()) {
+      return
+    }
+
     when (drawerViewModel.pinOrUnpin(descriptors)) {
       HistoryNavigationManager.PinResult.Pinned -> {
-        showToast(getString(R.string.drawer_controller_navigation_entry_pinned))
+        val text = if (descriptors.size == 1) {
+          getString(R.string.drawer_controller_navigation_entry_pinned_one, descriptors.first().userReadableString())
+        } else {
+          getString(R.string.drawer_controller_navigation_entry_pinned_many, descriptors.size)
+        }
+
+        showToast(text)
       }
       HistoryNavigationManager.PinResult.Unpinned -> {
-        showToast(getString(R.string.drawer_controller_navigation_entry_unpinned))
+        val text = if (descriptors.size == 1) {
+          getString(R.string.drawer_controller_navigation_entry_unpinned_one, descriptors.first().userReadableString())
+        } else {
+          getString(R.string.drawer_controller_navigation_entry_unpinned_many, descriptors.size)
+        }
+
+        showToast(text)
       }
       HistoryNavigationManager.PinResult.Failure -> {
         showToast(getString(R.string.drawer_controller_navigation_entry_failed_to_pin_unpin))
@@ -1647,7 +1849,30 @@ class MainController(
   private fun onNavHistoryDeleteClicked(navHistoryEntry: NavigationHistoryEntry) {
     mainScope.launch {
       drawerViewModel.deleteNavElement(navHistoryEntry)
-      showToast(getString(R.string.drawer_controller_navigation_entry_deleted))
+
+      val text = getString(
+        R.string.drawer_controller_navigation_entry_deleted_one,
+        navHistoryEntry.descriptor.userReadableString()
+      )
+
+      showToast(text)
+    }
+  }
+
+  private fun onNavHistoryDeleteSelectedClicked(selected: List<ChanDescriptor>) {
+    if (selected.isEmpty()) {
+      return
+    }
+
+    mainScope.launch {
+      drawerViewModel.deleteNavElementsByDescriptors(selected)
+
+      val text = getString(
+        R.string.drawer_controller_navigation_entry_deleted_many,
+        selected.size
+      )
+
+      showToast(text)
     }
   }
 
@@ -1822,6 +2047,7 @@ class MainController(
     private const val TAG = "MainController"
     private const val MIN_SPAN_COUNT = 3
     private const val MAX_SPAN_COUNT = 6
+    private const val TEXT_ANIMATION_DURATION = 1000
 
     private const val ACTION_MOVE_LAST_ACCESSED_THREAD_TO_TOP = 0
     private const val ACTION_SHOW_BOOKMARKS = 1
@@ -1831,6 +2057,8 @@ class MainController(
     private const val ACTION_RESTORE_LAST_VISITED_CATALOG = 5
     private const val ACTION_RESTORE_LAST_VISITED_THREAD = 6
     private const val ACTION_GRID_MODE = 7
+    private const val ACTION_DELETE_BOOKMARK_WHEN_DELETING_NAV_HISTORY = 8
+    private const val ACTION_DELETE_NAV_HISTORY_WHEN_BOOKMARK_DELETED = 9
 
     private const val ACTION_START_SELECTION = 100
     private const val ACTION_SELECT_ALL = 101
@@ -1843,7 +2071,8 @@ class MainController(
 
     private val GRID_COLUMN_WIDTH = dp(80f)
     private val LIST_MODE_ROW_HEIGHT = 52.dp
-
+    private val NAV_HISTORY_DELETE_BTN_SIZE = 24.dp
+    private val NAV_HISTORY_DELETE_BTN_BG_COLOR = Color(0x50000000)
     private val CIRCLE_CROP = CircleCropTransformation()
   }
 }

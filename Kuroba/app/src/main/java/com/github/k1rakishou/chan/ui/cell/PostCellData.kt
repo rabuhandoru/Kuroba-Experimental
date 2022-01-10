@@ -6,7 +6,6 @@ import android.text.TextUtils
 import android.text.format.DateUtils
 import android.text.style.UnderlineSpan
 import androidx.core.text.buildSpannedString
-import androidx.core.text.getSpans
 import com.github.k1rakishou.ChanSettings
 import com.github.k1rakishou.chan.R
 import com.github.k1rakishou.chan.core.base.RecalculatableLazy
@@ -17,15 +16,16 @@ import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.sp
 import com.github.k1rakishou.chan.utils.SpannableHelper
 import com.github.k1rakishou.common.MurmurHashUtils
 import com.github.k1rakishou.common.StringUtils
+import com.github.k1rakishou.common.buildSpannableString
 import com.github.k1rakishou.common.ellipsizeEnd
 import com.github.k1rakishou.common.isNotNullNorBlank
 import com.github.k1rakishou.common.setSpanSafe
 import com.github.k1rakishou.core_spannable.AbsoluteSizeSpanHashed
+import com.github.k1rakishou.core_spannable.ForegroundColorIdSpan
 import com.github.k1rakishou.core_spannable.ForegroundColorSpanHashed
-import com.github.k1rakishou.core_spannable.PosterIdMarkerSpan
-import com.github.k1rakishou.core_spannable.PosterNameMarkerSpan
-import com.github.k1rakishou.core_spannable.PosterTripcodeMarkerSpan
 import com.github.k1rakishou.core_themes.ChanTheme
+import com.github.k1rakishou.core_themes.ChanThemeColorId
+import com.github.k1rakishou.core_themes.ThemeEngine
 import com.github.k1rakishou.model.data.board.pages.BoardPage
 import com.github.k1rakishou.model.data.descriptor.ChanDescriptor
 import com.github.k1rakishou.model.data.descriptor.PostDescriptor
@@ -42,13 +42,15 @@ import java.util.*
 data class PostCellData(
   val chanDescriptor: ChanDescriptor,
   val post: ChanPost,
+  val postImages: List<ChanPostImage>,
   val postIndex: Int,
   val postCellDataWidthNoPaddings: Int,
-  var textSizeSp: Int,
+  val textSizeSp: Int,
+  val detailsSizeSp: Int,
   private val markedPostNo: Long?,
   var showDivider: Boolean,
   var boardPostViewMode: ChanSettings.BoardPostViewMode,
-  var boardPostsSortOrder: PostsFilter.Order,
+  val boardPostsSortOrder: PostsFilter.Order,
   val boardPage: BoardPage?,
   val neverShowPages: Boolean,
   val tapNoReply: Boolean,
@@ -57,30 +59,35 @@ data class PostCellData(
   val forceShiftPostComment: Boolean,
   val postMultipleImagesCompactMode: Boolean,
   val textOnly: Boolean,
-  val postFileInfo: Boolean,
+  val showPostFileInfo: Boolean,
   val markUnseenPosts: Boolean,
   val markSeenThreads: Boolean,
   var compact: Boolean,
-  var stub: Boolean,
+  val stub: Boolean,
   val theme: ChanTheme,
-  var filterHash: Int,
-  var postViewMode: PostViewMode,
-  var searchQuery: SearchQuery,
+  val filterHash: Int,
+  val postViewMode: PostViewMode,
+  val searchQuery: SearchQuery,
   val keywordsToHighlight: Set<HighlightFilterKeyword>,
   val postAlignmentMode: ChanSettings.PostAlignmentMode,
   val postCellThumbnailSizePercents: Int,
   val isSavedReply: Boolean,
-  val isReplyToSavedReply: Boolean
+  val isReplyToSavedReply: Boolean,
+  val isTablet: Boolean,
+  val isSplitLayout: Boolean
 ) {
   var postCellCallback: PostCellInterface.PostCellCallback? = null
 
-  private var detailsSizePxPrecalculated: Int? = null
   private var postTitleStubPrecalculated: CharSequence? = null
   private var postTitlePrecalculated: CharSequence? = null
   private var postFileInfoPrecalculated: MutableMap<ChanPostImage, SpannableString>? = null
+  private var postFileInfoMapForThumbnailWrapperPrecalculated: MutableMap<ChanPostImage, SpannableString>? = null
   private var postFileInfoHashPrecalculated: MurmurHashUtils.Murmur3Hash? = null
   private var commentTextPrecalculated: CharSequence? = null
   private var catalogRepliesTextPrecalculated: CharSequence? = null
+
+  val iconSizePx = sp(textSizeSp - 2.toFloat())
+  val postStubCellTitlePaddingPx = sp((textSizeSp - 6).toFloat())
 
   val postNo: Long
     get() = post.postNo()
@@ -94,10 +101,12 @@ data class PostCellData(
     get() = post.postDescriptor
   val fullPostComment: CharSequence
     get() = post.postComment.comment()
-  val postImages: List<ChanPostImage>
-    get() = post.postImages
   val firstImage: ChanPostImage?
     get() = postImages.firstOrNull()
+  val imagesCount: Int
+    get() = postImages.size
+  val timestamp: Long
+    get() = post.timestamp
   val postIcons: List<ChanPostHttpIcon>
     get() = post.postIcons
   val isDeleted: Boolean
@@ -123,41 +132,57 @@ data class PostCellData(
   val isInPopup: Boolean
     get() = postViewMode == PostViewMode.RepliesPopup
       || postViewMode == PostViewMode.ExternalPostsPopup
+      || postViewMode == PostViewMode.MediaViewerPostsPopup
       || postViewMode == PostViewMode.Search
   val isSelectionMode: Boolean
     get() = postViewMode == PostViewMode.PostSelection
   val threadPreviewMode: Boolean
     get() = postViewMode == PostViewMode.ExternalPostsPopup
+      || postViewMode == PostViewMode.MediaViewerPostsPopup
+  val isMediaViewerPostsPopup: Boolean
+    get() = postViewMode == PostViewMode.MediaViewerPostsPopup
   val searchMode: Boolean
     get() = postViewMode == PostViewMode.Search
   val markedNo: Long
     get() = markedPostNo ?: -1
+  val showImageFileName: Boolean
+    get() = (singleImageMode || (postImages.size > 1 && searchMode)) && showPostFileInfo
 
-  val showImageFileNameForSingleImage: Boolean
-    get() = singleImageMode && postFileInfo
-
-  private val _detailsSizePx = RecalculatableLazy { detailsSizePxPrecalculated ?: sp(textSizeSp - 4.toFloat()) }
+  private val _detailsSizePx = RecalculatableLazy { sp(ChanSettings.detailsSizeSp()) }
+  private val _fontSizePx = RecalculatableLazy { sp(ChanSettings.fontSize.get().toInt()) }
   private val _postTitleStub = RecalculatableLazy { postTitleStubPrecalculated ?: calculatePostTitleStub() }
   private val _postTitle = RecalculatableLazy { postTitlePrecalculated ?: calculatePostTitle() }
   private val _postFileInfoMap = RecalculatableLazy { postFileInfoPrecalculated ?: calculatePostFileInfo() }
+  private val _postFileInfoMapForThumbnailWrapper = RecalculatableLazy {
+    postFileInfoMapForThumbnailWrapperPrecalculated ?: calculatePostFileInfoMapForThumbnailWrapper()
+  }
   private val _postFileInfoMapHash = RecalculatableLazy { postFileInfoHashPrecalculated ?: calculatePostFileInfoHash(_postFileInfoMap) }
   private val _commentText = RecalculatableLazy { commentTextPrecalculated ?: calculateCommentText() }
   private val _catalogRepliesText = RecalculatableLazy { catalogRepliesTextPrecalculated ?: calculateCatalogRepliesText() }
 
   val detailsSizePx: Int
     get() = _detailsSizePx.value()
+  val fontSizePx: Int
+    get() = _fontSizePx.value()
   val postTitle: CharSequence
     get() = _postTitle.value()
   val postTitleStub: CharSequence
     get() = _postTitleStub.value()
   val postFileInfoMap: Map<ChanPostImage, SpannableString>
     get() = _postFileInfoMap.value()
+  val postFileInfoMapForThumbnailWrapper: Map<ChanPostImage, SpannableString>
+    get() = _postFileInfoMapForThumbnailWrapper.value()
   val postFileInfoMapHash: MurmurHashUtils.Murmur3Hash
     get() = _postFileInfoMapHash.value()
   val commentText: CharSequence
     get() = _commentText.value()
   val catalogRepliesText
     get() = _catalogRepliesText.value()
+
+  fun hashForAdapter(): Long {
+    val repliesFromCount = post.repliesFromCount
+    return (repliesFromCount.toLong() shl 32) + post.postNo() + post.postSubNo()
+  }
 
   suspend fun recalculatePostTitle() {
     postTitlePrecalculated = null
@@ -169,10 +194,10 @@ data class PostCellData(
   }
 
   fun resetEverything() {
-    detailsSizePxPrecalculated = null
     postTitlePrecalculated = null
     postTitleStubPrecalculated = null
     postFileInfoPrecalculated = null
+    postFileInfoMapForThumbnailWrapperPrecalculated = null
     postFileInfoHashPrecalculated = null
     commentTextPrecalculated = null
     catalogRepliesTextPrecalculated = null
@@ -181,6 +206,7 @@ data class PostCellData(
     _postTitle.resetValue()
     _postTitleStub.resetValue()
     _postFileInfoMap.resetValue()
+    _postFileInfoMapForThumbnailWrapper.resetValue()
     _postFileInfoMapHash.resetValue()
     _commentText.resetValue()
     _catalogRepliesText.resetValue()
@@ -201,8 +227,10 @@ data class PostCellData(
 
   fun resetPostFileInfoCache() {
     postFileInfoPrecalculated = null
+    postFileInfoMapForThumbnailWrapperPrecalculated = null
     postFileInfoHashPrecalculated = null
     _postFileInfoMap.resetValue()
+    _postFileInfoMapForThumbnailWrapper.resetValue()
     _postFileInfoMapHash.resetValue()
   }
 
@@ -217,6 +245,7 @@ data class PostCellData(
     _postTitle.value()
     _postTitleStub.value()
     _postFileInfoMap.value()
+    _postFileInfoMapForThumbnailWrapper.value()
     _postFileInfoMapHash.value()
     _commentText.value()
     _catalogRepliesText.value()
@@ -226,9 +255,11 @@ data class PostCellData(
     return PostCellData(
       chanDescriptor = chanDescriptor,
       post = post,
+      postImages = postImages.toList(),
       postIndex = postIndex,
       postCellDataWidthNoPaddings = postCellDataWidthNoPaddings,
       textSizeSp = textSizeSp,
+      detailsSizeSp = detailsSizeSp,
       markedPostNo = markedPostNo,
       showDivider = showDivider,
       boardPostViewMode = boardPostViewMode,
@@ -241,7 +272,7 @@ data class PostCellData(
       forceShiftPostComment = forceShiftPostComment,
       postMultipleImagesCompactMode = postMultipleImagesCompactMode,
       textOnly = textOnly,
-      postFileInfo = postFileInfo,
+      showPostFileInfo = showPostFileInfo,
       markUnseenPosts = markUnseenPosts,
       markSeenThreads = markSeenThreads,
       compact = compact,
@@ -255,9 +286,10 @@ data class PostCellData(
       postCellThumbnailSizePercents = postCellThumbnailSizePercents,
       isSavedReply = isSavedReply,
       isReplyToSavedReply = isReplyToSavedReply,
+      isTablet = isTablet,
+      isSplitLayout = isSplitLayout
     ).also { newPostCellData ->
       newPostCellData.postCellCallback = postCellCallback
-      newPostCellData.detailsSizePxPrecalculated = detailsSizePxPrecalculated
       newPostCellData.postTitlePrecalculated = postTitlePrecalculated
       newPostCellData.postTitleStubPrecalculated = postTitleStubPrecalculated
       newPostCellData.commentTextPrecalculated = commentTextPrecalculated
@@ -267,6 +299,7 @@ data class PostCellData(
 
   fun cleanup() {
     postCellCallback = null
+    resetEverything()
   }
 
   fun totalPostIconsCount(): Int {
@@ -297,34 +330,27 @@ data class PostCellData(
   }
 
   private fun calculatePostTitleStub(): CharSequence {
-    if (stub) {
-      return if (!TextUtils.isEmpty(post.subject)) {
-        post.subject ?: ""
-      } else {
-        getPostStubTitle()
-      }
+    if (!stub) {
+      return ""
     }
 
-    return ""
+    var postSubject = formatPostSubjectSpannable()
+
+    if (postSubject.isNullOrEmpty()) {
+      postSubject = SpannableString.valueOf(getPostStubTitle())
+    }
+
+    postSubject.setSpanSafe(AbsoluteSizeSpanHashed(detailsSizePx), 0, postSubject.length, 0)
+
+    return postSubject
   }
 
   private fun calculatePostTitle(): CharSequence {
-    val titleParts: MutableList<CharSequence> = ArrayList(5)
+    val fullTitle = SpannableStringBuilder()
 
-    val postIndexText = if (chanDescriptor.isThreadDescriptor() && postIndex >= 0) {
-      String.format(Locale.ENGLISH, "#%d, ", postIndex + 1)
-    } else {
-      ""
-    }
-
-    val siteBoardIndicator = if (chanDescriptor is ChanDescriptor.CompositeCatalogDescriptor) {
-      "${post.postDescriptor.siteDescriptor().siteName}/${post.postDescriptor.boardDescriptor().boardCode}/ "
-    } else {
-      ""
-    }
-
-    if (post.subject.isNotNullNorBlank()) {
-      val postSubject = SpannableString.valueOf(post.subject!!)
+    val postSubject = formatPostSubjectSpannable()
+    if (postSubject.isNotNullNorBlank()) {
+      postSubject.setSpanSafe(AbsoluteSizeSpanHashed(fontSizePx), 0, postSubject.length, 0)
 
       SpannableHelper.findAllQueryEntriesInsideSpannableStringAndMarkThem(
         inputQueries = listOf(searchQuery.query),
@@ -344,53 +370,64 @@ data class PostCellData(
         )
       }
 
-      titleParts.add(postSubject)
-      titleParts.add("\n")
-    }
-
-    if (post.fullTripcode.isNotNullNorBlank()) {
-      val tripcodeFull = SpannableStringBuilder.valueOf(post.fullTripcode!!)
-
-      tripcodeFull.getSpans<PosterIdMarkerSpan>().forEach { posterIdMarkerSpan ->
-        val start = tripcodeFull.getSpanStart(posterIdMarkerSpan)
-        val end = tripcodeFull.getSpanEnd(posterIdMarkerSpan)
-
-        tripcodeFull.setSpanSafe(PostCell.PosterIdClickableSpan(postCellCallback, post), start, end, 0)
-      }
-
-      tripcodeFull.getSpans<PosterNameMarkerSpan>().forEach { posterNameMarkerSpan ->
-        val start = tripcodeFull.getSpanStart(posterNameMarkerSpan)
-        val end = tripcodeFull.getSpanEnd(posterNameMarkerSpan)
-
-        tripcodeFull.setSpanSafe(PostCell.PosterNameClickableSpan(postCellCallback, post), start, end, 0)
-      }
-
-      tripcodeFull.getSpans<PosterTripcodeMarkerSpan>().forEach { posterTripcodeMarkerSpan ->
-        val start = tripcodeFull.getSpanStart(posterTripcodeMarkerSpan)
-        val end = tripcodeFull.getSpanEnd(posterTripcodeMarkerSpan)
-
-        tripcodeFull.setSpanSafe(PostCell.PosterTripcodeClickableSpan(postCellCallback, post), start, end, 0)
-      }
-
-      titleParts.add(tripcodeFull)
+      fullTitle.append(postSubject)
+      fullTitle.append("\n")
     }
 
     if (isSage) {
-      val sageString = buildSpannedString {
+      val sageString = buildSpannableString {
         append("SAGE", ForegroundColorSpanHashed(theme.accentColor), 0)
         append(" ")
-
-        setSpan(AbsoluteSizeSpanHashed(detailsSizePx), 0, this.length, 0)
       }
 
-      titleParts.add(sageString)
+      fullTitle.append(sageString)
     }
 
-    val postNoText = SpannableString.valueOf(
-      String
+    val name = formatPostNameSpannable()
+    if (name.isNotNullNorBlank()) {
+      fullTitle.append(name).append(" ")
+    }
+
+    val tripcode = formatPostTripcodeSpannable()
+    if (tripcode.isNotNullNorBlank()) {
+      fullTitle.append(tripcode).append(" ")
+    }
+
+    val posterId = formatPostPosterIdSpannable()
+    if (posterId.isNotNullNorBlank()) {
+      fullTitle.append(posterId).append(" ")
+    }
+
+    val modCapcode = formatPostModCapcodeSpannable()
+    if (modCapcode.isNotNullNorBlank()) {
+      fullTitle.append(modCapcode).append(" ")
+    }
+
+    val postNoText = buildSpannableString {
+      val postIndexText = if (chanDescriptor.isThreadDescriptor() && postIndex >= 0) {
+        String.format(Locale.ENGLISH, "#%d, ", postIndex + 1)
+      } else {
+        ""
+      }
+
+      val siteBoardIndicator = if (chanDescriptor is ChanDescriptor.CompositeCatalogDescriptor) {
+        "${post.postDescriptor.siteDescriptor().siteName}/${post.postDescriptor.boardDescriptor().boardCode}/ "
+      } else {
+        ""
+      }
+
+      val postNoTextFull = String
         .format(Locale.ENGLISH, "%s%sNo. %d", siteBoardIndicator, postIndexText, post.postNo())
         .replace(' ', StringUtils.UNBREAKABLE_SPACE_SYMBOL)
-    )
+
+      append(postNoTextFull)
+
+      if (tapNoReply) {
+        setSpan(PostCell.PostNumberClickableSpan(postCellCallback, post), 0, this.length, 0)
+      }
+
+      setSpan(ForegroundColorSpanHashed(theme.postDetailsColor), 0, this.length, 0)
+    }
 
     SpannableHelper.findAllQueryEntriesInsideSpannableStringAndMarkThem(
       inputQueries = listOf(searchQuery.query),
@@ -399,20 +436,113 @@ data class PostCellData(
       minQueryLength = searchQuery.queryMinValidLength
     )
 
-    val date = SpannableStringBuilder()
-      .append(postNoText)
-      .append(StringUtils.UNBREAKABLE_SPACE_SYMBOL)
-      .append(calculatePostTime(post))
-
-    date.setSpan(ForegroundColorSpanHashed(theme.postDetailsColor), 0, date.length, 0)
-    date.setSpan(AbsoluteSizeSpanHashed(detailsSizePx), 0, date.length, 0)
-
-    if (tapNoReply) {
-      date.setSpan(PostCell.PostNumberClickableSpan(postCellCallback, post), 0, postNoText.length, 0)
+    val date = buildSpannedString {
+      append(calculatePostTime(post))
+      setSpan(ForegroundColorSpanHashed(theme.postDetailsColor), 0, this.length, 0)
     }
 
-    titleParts.add(date)
-    return TextUtils.concat(*titleParts.toTypedArray())
+    fullTitle.append(postNoText)
+
+    if (boardPostViewMode == ChanSettings.BoardPostViewMode.LIST) {
+      fullTitle.append(StringUtils.UNBREAKABLE_SPACE_SYMBOL)
+    } else {
+      fullTitle.append(" ")
+    }
+
+    fullTitle.append(date)
+
+    if (postSubject.isEmpty()) {
+      fullTitle.setSpanSafe(AbsoluteSizeSpanHashed(detailsSizePx), 0, fullTitle.length, 0)
+    } else {
+      fullTitle.setSpanSafe(AbsoluteSizeSpanHashed(detailsSizePx), postSubject.length, fullTitle.length, 0)
+    }
+
+    return fullTitle
+  }
+
+  private fun formatPostSubjectSpannable(): SpannableString {
+    val subject = post.subject
+    if (subject.isNullOrEmpty()) {
+      return SpannableString.valueOf("")
+    }
+
+    val subjectSpan = SpannableString.valueOf(subject)
+    subjectSpan.setSpan(
+      ForegroundColorIdSpan(ChanThemeColorId.PostSubjectColor),
+      0,
+      subjectSpan.length,
+      0
+    )
+
+    return subjectSpan
+  }
+
+  private fun formatPostNameSpannable(): SpannableString {
+    val name = post.name
+    if (name.isNullOrEmpty()) {
+      return SpannableString.valueOf("")
+    }
+
+    val nameSpan = SpannableString.valueOf(name)
+    nameSpan.setSpan(ForegroundColorIdSpan(ChanThemeColorId.PostNameColor), 0, nameSpan.length, 0)
+    nameSpan.setSpan(PostCell.PosterNameClickableSpan(postCellCallback, post), 0, nameSpan.length, 0)
+
+    return nameSpan
+  }
+
+  private fun formatPostTripcodeSpannable(): SpannableString {
+    val tripcode = post.tripcode
+    if (tripcode.isNullOrEmpty()) {
+      return SpannableString.valueOf("")
+    }
+
+    val tripcodeSpan = SpannableString.valueOf(tripcode)
+    tripcodeSpan.setSpan(ForegroundColorIdSpan(ChanThemeColorId.PostNameColor), 0, tripcodeSpan.length, 0)
+    tripcodeSpan.setSpan(PostCell.PosterTripcodeClickableSpan(postCellCallback, post), 0, tripcodeSpan.length, 0)
+
+    return tripcodeSpan
+  }
+
+  private fun formatPostPosterIdSpannable(): SpannableString {
+    val posterId = post.posterId
+    if (posterId.isNullOrEmpty()) {
+      return SpannableString.valueOf("")
+    }
+
+    val posterIdColorHSL = ThemeEngine.colorToHsl(post.posterIdColor)
+
+    // Make the posterId text color darker if it's too light and the current theme's back color is
+    // also light and vice versa
+    if (theme.isBackColorDark && posterIdColorHSL.lightness < 0.5) {
+      posterIdColorHSL.lightness = .7f
+    } else if (theme.isBackColorLight && posterIdColorHSL.lightness > 0.5) {
+      posterIdColorHSL.lightness = .3f
+    }
+
+    val updatedPosterIdColor = ThemeEngine.hslToColor(posterIdColorHSL)
+
+    val posterIdSpan = SpannableString.valueOf(posterId)
+    posterIdSpan.setSpan(ForegroundColorSpanHashed(updatedPosterIdColor), 0, posterIdSpan.length, 0)
+    posterIdSpan.setSpan(PostCell.PosterIdClickableSpan(postCellCallback, post), 0, posterIdSpan.length, 0)
+
+    return posterIdSpan
+  }
+
+  private fun formatPostModCapcodeSpannable(): SpannableString {
+    val moderatorCapcode = post.moderatorCapcode
+    if (moderatorCapcode.isNullOrEmpty()) {
+      return SpannableString.valueOf("")
+    }
+
+    val capcodeSpan = SpannableString.valueOf(moderatorCapcode)
+    capcodeSpan.setSpan(
+      ForegroundColorIdSpan(ChanThemeColorId.AccentColor),
+      0,
+      capcodeSpan.length,
+      0
+    )
+
+    return capcodeSpan
   }
 
   private fun getPostStubTitle(): CharSequence {
@@ -481,6 +611,35 @@ data class PostCellData(
     return commentText
   }
 
+  private fun calculatePostFileInfoMapForThumbnailWrapper(): Map<ChanPostImage, SpannableString> {
+    val resultMap = mutableMapOf<ChanPostImage, SpannableString>()
+
+    postImages.forEach { postImage ->
+      resultMap[postImage] = buildSpannableString {
+        if (postImage.extension.isNotNullNorBlank()) {
+          append(postImage.extension!!.uppercase(Locale.ENGLISH))
+          append(" ")
+        }
+
+        if (postImage.imageWidth > 0 || postImage.imageHeight > 0) {
+          append("${postImage.imageWidth}x${postImage.imageHeight}")
+          append(" ")
+        }
+
+        if (postImage.size > 0) {
+          val readableFileSize = ChanPostUtils.getReadableFileSize(postImage.size)
+            .replace(' ', StringUtils.UNBREAKABLE_SPACE_SYMBOL)
+          append(readableFileSize)
+        }
+
+        setSpan(ForegroundColorSpanHashed(theme.postDetailsColor), 0, this.length, 0)
+        setSpan(AbsoluteSizeSpanHashed(detailsSizePx), 0, this.length, 0)
+      }
+    }
+
+    return resultMap
+  }
+
   private fun calculatePostFileInfo(): Map<ChanPostImage, SpannableString> {
     val postFileInfoTextMap = calculatePostFileInfoInternal()
 
@@ -502,7 +661,7 @@ data class PostCellData(
     }
 
     val resultMap = mutableMapOf<ChanPostImage, SpannableString>()
-    val detailsSizePx = sp(textSizeSp - 4.toFloat())
+    val detailsSizePx = sp(detailsSizeSp)
 
     if (postImages.size > 1 && postMultipleImagesCompactMode) {
       val postImage = postImages.first()
@@ -515,20 +674,46 @@ data class PostCellData(
       fileInfoText.setSpan(AbsoluteSizeSpanHashed(detailsSizePx), 0, fileInfoText.length, 0)
 
       resultMap[postImage] = fileInfoText
-    } else {
+    } else if (postImages.size > 1) {
       postImages.forEach { postImage ->
-        val fileInfoText = SpannableStringBuilder()
-        fileInfoText.append(postImage.formatFullAvailableFileName(appendExtension = false))
-        fileInfoText.setSpan(UnderlineSpan(), 0, fileInfoText.length, 0)
+        resultMap[postImage] = buildSpannableString {
+          if (searchMode) {
+            append(postImage.formatFullAvailableFileName(appendExtension = false))
+            append(" ")
+            setSpan(UnderlineSpan(), 0, this.length, 0)
+          }
 
-        if (postImages.size == 1) {
-          fileInfoText.append(postImage.formatImageInfo())
+          if (postImage.extension.isNotNullNorBlank()) {
+            append(postImage.extension!!.uppercase(Locale.ENGLISH))
+            append(" ")
+          }
+
+          if (postImage.imageWidth > 0 || postImage.imageHeight > 0) {
+            append("${postImage.imageWidth}x${postImage.imageHeight}")
+            append(" ")
+          }
+
+          val readableFileSize = ChanPostUtils.getReadableFileSize(postImage.size)
+            .replace(' ', StringUtils.UNBREAKABLE_SPACE_SYMBOL)
+          append(readableFileSize)
+
+          setSpan(ForegroundColorSpanHashed(theme.postDetailsColor), 0, this.length, 0)
+          setSpan(AbsoluteSizeSpanHashed(detailsSizePx), 0, this.length, 0)
+        }
+      }
+    } else if (postImages.size == 1) {
+      val postImage = postImages.first()
+
+      resultMap[postImage] = buildSpannableString {
+        append(postImage.formatFullAvailableFileName(appendExtension = false))
+        setSpan(UnderlineSpan(), 0, this.length, 0)
+
+        if (postImages.size == 1 || searchMode) {
+          append(postImage.formatImageInfo())
         }
 
-        fileInfoText.setSpan(ForegroundColorSpanHashed(theme.postDetailsColor), 0, fileInfoText.length, 0)
-        fileInfoText.setSpan(AbsoluteSizeSpanHashed(detailsSizePx), 0, fileInfoText.length, 0)
-
-        resultMap[postImage] = SpannableString.valueOf(fileInfoText)
+        setSpan(ForegroundColorSpanHashed(theme.postDetailsColor), 0, this.length, 0)
+        setSpan(AbsoluteSizeSpanHashed(detailsSizePx), 0, this.length, 0)
       }
     }
 
@@ -551,9 +736,9 @@ data class PostCellData(
       val spanCount = postCellCallback!!.currentSpanCount()
 
       // The higher the spanCount the lower the commentMaxLength
-      // (but COMMENT_MAX_LENGTH_GRID is the minimum)
-      commentMaxLength = COMMENT_MAX_LENGTH_GRID +
-        ((COMMENT_MAX_LENGTH_STAGGER - COMMENT_MAX_LENGTH_GRID) / spanCount)
+      // (but COMMENT_MAX_LENGTH_STAGGER_MIN is the minimum)
+      commentMaxLength = COMMENT_MAX_LENGTH_STAGGER_MIN +
+        ((COMMENT_MAX_LENGTH_STAGGER - COMMENT_MAX_LENGTH_STAGGER_MIN) / spanCount)
     }
 
     if (commentText.length <= commentMaxLength) {
@@ -661,6 +846,7 @@ data class PostCellData(
     Normal,
     RepliesPopup,
     ExternalPostsPopup,
+    MediaViewerPostsPopup,
     PostSelection,
     Search;
 
@@ -681,7 +867,7 @@ data class PostCellData(
     }
 
     fun canShowGoToPostButton(): Boolean {
-      if (this == RepliesPopup || this == ExternalPostsPopup || this == Search) {
+      if (this == RepliesPopup || this == ExternalPostsPopup || this == MediaViewerPostsPopup || this == Search) {
         return true
       }
 
@@ -689,7 +875,7 @@ data class PostCellData(
     }
 
     fun consumePostClicks(): Boolean {
-      if (this == ExternalPostsPopup || this == Search) {
+      if (this == ExternalPostsPopup || this == MediaViewerPostsPopup || this == Search) {
         return true
       }
 
@@ -702,6 +888,7 @@ data class PostCellData(
         RepliesPopup,
         Search -> true
         ExternalPostsPopup,
+        MediaViewerPostsPopup,
         PostSelection -> false
       }
     }
@@ -735,7 +922,8 @@ data class PostCellData(
   companion object {
     private const val COMMENT_MAX_LENGTH_LIST = 350
     private const val COMMENT_MAX_LENGTH_GRID = 200
-    private const val COMMENT_MAX_LENGTH_STAGGER = 400
+    private const val COMMENT_MAX_LENGTH_STAGGER_MIN = 100
+    private const val COMMENT_MAX_LENGTH_STAGGER = 300
     private const val POST_STUB_TITLE_MAX_LENGTH = 100
 
     // vvv When updating any of these don't forget to update PostCellItemViewType !!! vvv

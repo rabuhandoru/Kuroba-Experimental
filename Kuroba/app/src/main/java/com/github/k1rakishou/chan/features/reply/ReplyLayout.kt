@@ -673,6 +673,16 @@ class ReplyLayout @JvmOverloads constructor(
     }
   }
 
+  fun showCaptcha(
+    chanDescriptor: ChanDescriptor,
+    replyMode: ReplyMode,
+    autoReply: Boolean,
+    afterPostingAttempt: Boolean,
+    onFinished: ((Boolean) -> Unit)? = null
+  ) {
+    presenter.showCaptcha(chanDescriptor, replyMode, autoReply, afterPostingAttempt, onFinished)
+  }
+
   suspend fun bindChanDescriptor(chanDescriptor: ChanDescriptor) {
     if (!presenter.bindChanDescriptor(chanDescriptor)) {
       Logger.d(TAG, "bindLoadable failed to bind $chanDescriptor")

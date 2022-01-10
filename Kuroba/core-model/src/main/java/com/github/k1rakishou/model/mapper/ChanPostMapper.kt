@@ -28,10 +28,11 @@ object ChanPostMapper {
         .subject(chanPost.subject)
         .name(chanPost.name)
         .comment(chanPost.postComment.originalUnparsedComment)
-        .tripcode(chanPost.fullTripcode)
+        .tripcode(chanPost.tripcode)
         .setUnixTimestampSeconds(chanPost.timestamp)
         .postImages(chanPost.postImages, postDescriptor)
         .posterId(chanPost.posterId)
+        .posterIdColor(chanPost.posterIdColor)
         .moderatorCapcode(chanPost.moderatorCapcode)
         .httpIcons(chanPost.postIcons)
         .isSavedReply(chanPost.isSavedReply)
@@ -48,10 +49,11 @@ object ChanPostMapper {
         .subject(chanPost.subject)
         .name(chanPost.name)
         .comment(chanPost.postComment.originalUnparsedComment)
-        .tripcode(chanPost.fullTripcode)
+        .tripcode(chanPost.tripcode)
         .setUnixTimestampSeconds(chanPost.timestamp)
         .postImages(chanPost.postImages, postDescriptor)
         .posterId(chanPost.posterId)
+        .posterIdColor(chanPost.posterIdColor)
         .moderatorCapcode(chanPost.moderatorCapcode)
         .httpIcons(chanPost.postIcons)
         .isSavedReply(chanPost.isSavedReply)
@@ -87,6 +89,7 @@ object ChanPostMapper {
         subject = chanPostBuilder.subject,
         tripcode = chanPostBuilder.tripcode,
         posterId = chanPostBuilder.posterId,
+        posterIdColor = chanPostBuilder.idColor,
         moderatorCapcode = chanPostBuilder.moderatorCapcode,
         sticky = chanPostBuilder.sticky,
         closed = chanPostBuilder.closed,
@@ -100,15 +103,16 @@ object ChanPostMapper {
       return ChanPost(
         chanPostId = 0L,
         postDescriptor = postDescriptor,
-        postImages = chanPostBuilder.postImages,
+        _postImages = chanPostBuilder.postImages.toMutableList(),
         postIcons = chanPostBuilder.httpIcons,
         repliesTo = chanPostBuilder.repliesToIds,
         timestamp = chanPostBuilder.unixTimestampSeconds,
         name = chanPostBuilder.name,
         postComment = postComment,
         subject = chanPostBuilder.subject,
-        fullTripcode = chanPostBuilder.tripcode,
+        tripcode = chanPostBuilder.tripcode,
         posterId = chanPostBuilder.posterId,
+        posterIdColor = chanPostBuilder.idColor,
         moderatorCapcode = chanPostBuilder.moderatorCapcode,
         isSavedReply = chanPostBuilder.isSavedReply,
         deleted = chanPostBuilder.deleted,

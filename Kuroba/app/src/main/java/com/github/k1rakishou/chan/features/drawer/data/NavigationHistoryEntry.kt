@@ -1,15 +1,17 @@
 package com.github.k1rakishou.chan.features.drawer.data
 
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import com.github.k1rakishou.common.AppConstants
-import com.github.k1rakishou.core_themes.ThemeEngine
+import com.github.k1rakishou.core_themes.ChanTheme
 import com.github.k1rakishou.model.data.descriptor.ChanDescriptor
 import okhttp3.HttpUrl
 
+@Immutable
 data class NavigationHistoryEntry(
   val descriptor: ChanDescriptor,
   val threadThumbnailUrl: HttpUrl,
@@ -28,6 +30,7 @@ data class NavigationHistoryEntry(
 
 }
 
+@Immutable
 data class NavHistoryBookmarkAdditionalInfo(
   val watching: Boolean = false,
   val newPosts: Int = 0,
@@ -37,7 +40,14 @@ data class NavHistoryBookmarkAdditionalInfo(
   val isLastPage: Boolean = false
 ) {
 
-  fun toAnnotatedString(themeEngine: ThemeEngine): AnnotatedString {
+  fun toAnnotatedString(
+    chanTheme: ChanTheme,
+    newPostsCount: Int? = null,
+    newQuotesCount: Int? = null
+  ): AnnotatedString {
+    val newPosts = newPostsCount ?: this.newPosts
+    val newQuotes = newQuotesCount ?: this.newQuotes
+
     val text = buildString {
       append(newPosts)
 
@@ -51,13 +61,13 @@ data class NavHistoryBookmarkAdditionalInfo(
     val spanStyleRanges = mutableListOf<AnnotatedString.Range<SpanStyle>>()
 
     if (newQuotes > 0) {
-      val spanStyle = SpanStyle(color = themeEngine.chanTheme.bookmarkCounterHasRepliesColorCompose)
+      val spanStyle = SpanStyle(color = chanTheme.bookmarkCounterHasRepliesColorCompose)
       spanStyleRanges += AnnotatedString.Range(spanStyle, 0, text.length)
     } else if (!watching) {
-      val spanStyle = SpanStyle(color = themeEngine.chanTheme.bookmarkCounterNotWatchingColorCompose)
+      val spanStyle = SpanStyle(color = chanTheme.bookmarkCounterNotWatchingColorCompose)
       spanStyleRanges += AnnotatedString.Range(spanStyle, 0, text.length)
     } else {
-      val spanStyle = SpanStyle(color = themeEngine.chanTheme.bookmarkCounterNormalColorCompose)
+      val spanStyle = SpanStyle(color = chanTheme.bookmarkCounterNormalColorCompose)
       spanStyleRanges += AnnotatedString.Range(spanStyle, 0, text.length)
     }
 

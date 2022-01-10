@@ -60,6 +60,7 @@ open class PostLinkable(
 
   override fun updateDrawState(ds: TextPaint) {
     val theme = getTheme()
+    var needResetTypeFace = true
 
     when (type) {
       Type.QUOTE,
@@ -78,6 +79,8 @@ open class PostLinkable(
           if (value == markedNo) {
             ds.color = theme.postHighlightQuoteColor
             ds.typeface = theme.defaultBoldTypeface
+
+            needResetTypeFace = false
           } else {
             ds.color = theme.postQuoteColor
           }
@@ -103,6 +106,10 @@ open class PostLinkable(
           ds.color = theme.postSpoilerRevealTextColor
         }
       }
+    }
+
+    if (needResetTypeFace && ds.typeface != null) {
+      ds.typeface = null
     }
   }
 
@@ -169,12 +176,25 @@ open class PostLinkable(
     abstract override fun equals(other: Any?): Boolean
     abstract override fun hashCode(): Int
 
-    fun extractLongOrNull(): Long? {
+    fun extractValueOrNull(): Long? {
       return when (this) {
         is LongValue -> value
+        is LongPairValue -> value
         is StringValue,
         is ThreadOrPostLink,
         is ArchiveThreadLink,
+        is SearchLink,
+        NoValue -> null
+      }
+    }
+
+    fun extractSubValueOrNull(): Long? {
+      return when (this) {
+        is LongValue -> null
+        is LongPairValue -> subValue
+        is ThreadOrPostLink -> postSubId
+        is ArchiveThreadLink -> postSubId
+        is StringValue,
         is SearchLink,
         NoValue -> null
       }
@@ -191,6 +211,7 @@ open class PostLinkable(
     }
 
     data class LongValue(val value: Long) : Value()
+    data class LongPairValue(val value: Long, val subValue: Long) : Value()
     data class SearchLink(val board: String, val query: String) : Value()
 
     data class StringValue(val value: CharSequence) : Value() {
@@ -208,7 +229,12 @@ open class PostLinkable(
       }
     }
 
-    data class ThreadOrPostLink(val board: String, val threadId: Long, val postId: Long) : Value() {
+    data class ThreadOrPostLink(
+      val board: String,
+      val threadId: Long,
+      val postId: Long,
+      val postSubId: Long = 0
+    ) : Value() {
       fun isThreadLink(): Boolean = threadId == postId
 
       fun isValid(): Boolean = threadId > 0 && postId > 0
@@ -218,7 +244,8 @@ open class PostLinkable(
       val archiveType: ArchiveType,
       val board: String,
       val threadId: Long,
-      val postId: Long?
+      val postId: Long?,
+      val postSubId: Long? = null,
     ) : Value() {
 
       fun isValid(): Boolean = threadId > 0 && (postId == null || postId > 0)

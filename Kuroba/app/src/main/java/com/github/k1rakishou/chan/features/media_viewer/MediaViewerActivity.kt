@@ -18,7 +18,9 @@ import com.github.k1rakishou.chan.core.base.ControllerHostActivity
 import com.github.k1rakishou.chan.core.di.component.activity.ActivityComponent
 import com.github.k1rakishou.chan.core.di.component.viewmodel.ViewModelComponent
 import com.github.k1rakishou.chan.core.di.module.activity.ActivityModule
+import com.github.k1rakishou.chan.core.helper.DialogFactory
 import com.github.k1rakishou.chan.core.manager.GlobalWindowInsetsManager
+import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils
 import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.showToast
 import com.github.k1rakishou.chan.utils.FullScreenUtils.hideSystemUI
 import com.github.k1rakishou.chan.utils.FullScreenUtils.isSystemUIHidden
@@ -50,6 +52,8 @@ class MediaViewerActivity : ControllerHostActivity(),
   lateinit var globalWindowInsetsManager: GlobalWindowInsetsManager
   @Inject
   lateinit var fileChooser: FileChooser
+  @Inject
+  lateinit var dialogFactory: DialogFactory
 
   private lateinit var activityComponent: ActivityComponent
   private lateinit var viewModelComponent: ViewModelComponent
@@ -91,6 +95,7 @@ class MediaViewerActivity : ControllerHostActivity(),
       onCreate()
       onShow()
     }
+    dialogFactory.containerController = mediaViewerController
 
     themeEngine.setRootView(this, mediaViewerController.view)
     themeEngine.addListener(this)
@@ -148,6 +153,8 @@ class MediaViewerActivity : ControllerHostActivity(),
     if (::fileChooser.isInitialized) {
       fileChooser.removeCallbacks()
     }
+
+    AppModuleAndroidUtils.cancelLastToast()
 
     AndroidUtils.getWindow(this)
       .clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)

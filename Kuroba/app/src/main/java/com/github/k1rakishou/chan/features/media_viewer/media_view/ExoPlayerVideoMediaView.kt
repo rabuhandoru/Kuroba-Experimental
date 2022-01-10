@@ -10,19 +10,22 @@ import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageButton
-import android.widget.LinearLayout
 import android.widget.ProgressBar
 import com.github.k1rakishou.ChanSettings
 import com.github.k1rakishou.chan.R
-import com.github.k1rakishou.chan.core.manager.WindowInsetsListener
+import com.github.k1rakishou.chan.core.cache.CacheFileType
 import com.github.k1rakishou.chan.features.media_viewer.MediaLocation
 import com.github.k1rakishou.chan.features.media_viewer.MediaViewerControllerViewModel
 import com.github.k1rakishou.chan.features.media_viewer.ViewableMedia
 import com.github.k1rakishou.chan.features.media_viewer.helper.CloseMediaActionHelper
+import com.github.k1rakishou.chan.features.media_viewer.helper.ExoPlayerCustomPlayerView
 import com.github.k1rakishou.chan.features.media_viewer.helper.ExoPlayerWrapper
+import com.github.k1rakishou.chan.features.media_viewer.strip.MediaViewerActionStrip
+import com.github.k1rakishou.chan.features.media_viewer.strip.MediaViewerBottomActionStrip
 import com.github.k1rakishou.chan.ui.theme.widget.ColorizableProgressBar
 import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils
 import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.getString
+import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.isTablet
 import com.github.k1rakishou.chan.utils.setEnabledFast
 import com.github.k1rakishou.chan.utils.setVisibilityFast
 import com.github.k1rakishou.common.ModularResult
@@ -30,10 +33,7 @@ import com.github.k1rakishou.common.awaitCatching
 import com.github.k1rakishou.common.errorMessageOrClassName
 import com.github.k1rakishou.common.findChild
 import com.github.k1rakishou.common.isExceptionImportant
-import com.github.k1rakishou.common.updateHeight
-import com.github.k1rakishou.common.updatePaddings
 import com.github.k1rakishou.core_logger.Logger
-import com.google.android.exoplayer2.ui.PlayerView
 import com.google.android.exoplayer2.upstream.DataSource
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
@@ -62,12 +62,13 @@ class ExoPlayerVideoMediaView(
   cachedHttpDataSourceFactory = cachedHttpDataSourceFactory,
   fileDataSourceFactory = fileDataSourceFactory,
   contentDataSourceFactory = contentDataSourceFactory,
-), WindowInsetsListener {
+) {
 
   private val thumbnailMediaView: ThumbnailMediaView
-  private val actualVideoPlayerView: PlayerView
+  private val actualVideoPlayerView: ExoPlayerCustomPlayerView
   private val bufferingProgressView: ColorizableProgressBar
   private val muteUnmuteButton: ImageButton
+  private val actionStrip: MediaViewerActionStrip
 
   private val mainVideoPlayer by lazy {
     ExoPlayerWrapper(
@@ -94,6 +95,8 @@ class ExoPlayerVideoMediaView(
 
   override val hasContent: Boolean
     get() = mainVideoPlayer.hasContent
+  override val mediaViewerActionStrip: MediaViewerActionStrip?
+    get() = actionStrip
 
   init {
     AppModuleAndroidUtils.extractActivityComponent(context)
@@ -106,10 +109,19 @@ class ExoPlayerVideoMediaView(
     actualVideoPlayerView = findViewById(R.id.actual_video_view)
     bufferingProgressView = findViewById(R.id.buffering_progress_view)
 
-    muteUnmuteButton = actualVideoPlayerView.findViewById(R.id.exo_mute)
+    if (isTablet()) {
+      actionStrip = findViewById<MediaViewerBottomActionStrip?>(R.id.left_action_strip)
+    } else {
+      actionStrip = findViewById<MediaViewerBottomActionStrip?>(R.id.bottom_action_strip)
+    }
+
+    val placeholderView = findViewById<FrameLayout>(R.id.view_player_controls_placeholder)
+    actualVideoPlayerView.setControllerPlaceholderView(placeholderView)
+
+    muteUnmuteButton = findViewById(R.id.exo_mute)
     muteUnmuteButton.setEnabledFast(false)
 
-    val movableContainer = actualVideoPlayerView.findViewById<View>(R.id.exo_content_frame)
+    val movableContainer = findViewById<View>(R.id.exo_content_frame)
       ?: actualVideoPlayerView
 
     closeMediaActionHelper = CloseMediaActionHelper(
@@ -224,11 +236,11 @@ class ExoPlayerVideoMediaView(
   }
 
   override fun bind() {
-    globalWindowInsetsManager.addInsetsUpdatesListener(this)
+
   }
 
   override fun show(isLifecycleChange: Boolean) {
-    mediaViewToolbar?.updateWithViewableMedia(pagerPosition, totalPageItemsCount, viewableMedia)
+    super.updateComponentsWithViewableMedia(pagerPosition, totalPageItemsCount, viewableMedia)
 
     onSystemUiVisibilityChanged(isSystemUiHidden())
     updateMuteUnMuteState()
@@ -315,7 +327,6 @@ class ExoPlayerVideoMediaView(
     preloadingJob = null
 
     actualVideoPlayerView.player = null
-    globalWindowInsetsManager.removeInsetsUpdatesListener(this)
   }
 
   override suspend fun reloadMedia() {
@@ -328,7 +339,10 @@ class ExoPlayerVideoMediaView(
       return
     }
 
-    cacheHandler.get().deleteCacheFileByUrlSuspend(mediaLocation.url.toString())
+    cacheHandler.get().deleteCacheFileByUrlSuspend(
+      cacheFileType = CacheFileType.PostMediaFull,
+      url = mediaLocation.url.toString()
+    )
 
     fullVideoDeferred.cancel()
     fullVideoDeferred = CompletableDeferred<Unit>()
@@ -356,7 +370,6 @@ class ExoPlayerVideoMediaView(
   }
 
   override fun onInsetsChanged() {
-    updatePlayerControlsInsets()
   }
 
   private fun playerControlsHeight(): Int {
@@ -397,12 +410,11 @@ class ExoPlayerVideoMediaView(
         actualVideoPlayerView.controllerAutoShow = false
         actualVideoPlayerView.controllerHideOnTouch = false
         actualVideoPlayerView.controllerShowTimeoutMs = -1
-        actualVideoPlayerView.setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+        actualVideoPlayerView.setShowBuffering(ExoPlayerCustomPlayerView.SHOW_BUFFERING_NEVER)
         actualVideoPlayerView.useArtwork = false
         actualVideoPlayerView.setShutterBackgroundColor(Color.TRANSPARENT)
         actualVideoPlayerView.player = mainVideoPlayer.actualExoPlayer
 
-        updatePlayerControlsInsets()
         updateExoBufferingViewColors()
 
         mainVideoPlayer.preload(
@@ -434,28 +446,6 @@ class ExoPlayerVideoMediaView(
     mainVideoPlayer.muteUnMute(isSoundCurrentlyMuted)
   }
 
-  @Suppress("IfThenToSafeAccess")
-  private fun updatePlayerControlsInsets() {
-    val insetsView = actualVideoPlayerView
-      .findChild { childView -> childView.id == R.id.exo_controls_insets_view }
-      as? FrameLayout
-
-    if (insetsView != null) {
-      insetsView.updateHeight(globalWindowInsetsManager.bottom())
-    }
-
-    val rootView = actualVideoPlayerView
-      .findChild { childView -> childView.id == R.id.exo_controls_view_root }
-      as? LinearLayout
-
-    if (rootView != null) {
-      rootView.updatePaddings(
-        left = globalWindowInsetsManager.left(),
-        right = globalWindowInsetsManager.right()
-      )
-    }
-  }
-
   private fun updateExoBufferingViewColors() {
     actualVideoPlayerView.findViewById<View>(R.id.exo_buffering)?.let { progressView ->
       (progressView as? ProgressBar)?.progressTintList =
@@ -475,7 +465,7 @@ class ExoPlayerVideoMediaView(
 
     when {
       mediaViewState.playing == null || mediaViewState.playing == true -> {
-        mainVideoPlayer.startAndAwaitFirstFrame()
+        mainVideoPlayer.startAndAwaitFirstFrame(viewableMedia.mediaLocation)
       }
       mediaViewState.prevWindowIndex >= 0 && mediaViewState.prevPosition >= 0 -> {
         // We need to do this hacky stuff to force exoplayer to show the video frame instead of nothing
@@ -500,7 +490,7 @@ class ExoPlayerVideoMediaView(
         && (preloadingJob == null || preloadingJob?.isActive == false)
     }
 
-    return canAutoLoad()
+    return canAutoLoad(cacheFileType = CacheFileType.PostMediaFull)
       && !fullVideoDeferred.isCompleted
       && (preloadingJob == null || preloadingJob?.isActive == false)
   }
@@ -545,7 +535,7 @@ class ExoPlayerVideoMediaView(
 
   class GestureDetectorListener(
     private val thumbnailMediaView: ThumbnailMediaView,
-    private val actualVideoView: PlayerView,
+    private val actualVideoView: ExoPlayerCustomPlayerView,
     private val mediaViewContract: MediaViewContract,
     private val tryPreloadingFunc: () -> Boolean,
     private val onMediaLongClick: () -> Unit

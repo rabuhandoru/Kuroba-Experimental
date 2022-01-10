@@ -290,11 +290,6 @@ public class ChanSettings {
     public static BooleanSetting anonymize;
     public static BooleanSetting showAnonymousName;
     public static BooleanSetting anonymizeIds;
-    public static BooleanSetting markYourPostsOnScrollbar;
-    public static BooleanSetting markRepliesToYourPostOnScrollbar;
-    public static BooleanSetting markCrossThreadQuotesOnScrollbar;
-    public static BooleanSetting markDeletedPostsOnScrollbar;
-    public static BooleanSetting markHotPostsOnScrollbar;
     public static BooleanSetting shiftPostComment;
     public static BooleanSetting forceShiftPostComment;
     public static BooleanSetting postMultipleImagesCompactMode;
@@ -307,8 +302,8 @@ public class ChanSettings {
 
     // Images
     public static BooleanSetting hideImages;
-    public static BooleanSetting removeImageSpoilers;
-    public static BooleanSetting revealImageSpoilers;
+    public static BooleanSetting postThumbnailRemoveImageSpoilers;
+    public static BooleanSetting mediaViewerRevealImageSpoilers;
     public static BooleanSetting transparencyOn;
 
     // Set elsewhere in the application
@@ -320,6 +315,7 @@ public class ChanSettings {
     // General
     public static BooleanSetting autoRefreshThread;
     public static BooleanSetting controllerSwipeable;
+    public static BooleanSetting viewThreadControllerSwipeable;
     public static BooleanSetting replyLayoutOpenCloseGestures;
     public static BooleanSetting openLinkConfirmation;
     public static StringSetting jsCaptchaCookies;
@@ -402,16 +398,18 @@ public class ChanSettings {
     public static BooleanSetting verboseLogs;
     public static BooleanSetting checkUpdateApkVersionCode;
     public static BooleanSetting showMpvInternalLogs;
+
+    public static BooleanSetting funThingsAreFun;
     public static BooleanSetting force4chanBirthdayMode;
     public static BooleanSetting forceHalloweenMode;
+    public static BooleanSetting forceChristmasMode;
+    public static BooleanSetting forceNewYearMode;
     //endregion
 
     //region DATA
     // While not a setting, the last image options selected should be persisted even after import.
     public static StringSetting lastImageOptions;
 
-    // While these are not "settings", they are here instead of in PersistableChanState because they
-    // control the appearance of hints. Hints should not be shown if re-imported.
     public static CounterSetting historyOpenCounter;
     public static CounterSetting threadOpenCounter;
     public static IntegerSetting drawerAutoOpenCount;
@@ -429,7 +427,15 @@ public class ChanSettings {
     public static BooleanSetting drawerShowBookmarkedThreads;
     public static BooleanSetting drawerShowNavigationHistory;
     public static BooleanSetting drawerShowDeleteButtonShortcut;
+    public static BooleanSetting drawerDeleteBookmarksWhenDeletingNavHistory;
+    public static BooleanSetting drawerDeleteNavHistoryWhenBookmarkDeleted;
     public static BooleanSetting isLowRamDeviceForced;
+    public static BooleanSetting markYourPostsOnScrollbar;
+    public static BooleanSetting markRepliesToYourPostOnScrollbar;
+    public static BooleanSetting markCrossThreadQuotesOnScrollbar;
+    public static BooleanSetting markDeletedPostsOnScrollbar;
+    public static BooleanSetting markHotPostsOnScrollbar;
+    public static BooleanSetting globalNsfwMode;
     //endregion
     //endregion
 
@@ -534,8 +540,8 @@ public class ChanSettings {
 
             // Images
             hideImages = new BooleanSetting(provider, "preference_hide_images", false);
-            removeImageSpoilers = new BooleanSetting(provider, "preference_reveal_image_spoilers", false);
-            revealImageSpoilers = new BooleanSetting(provider, "preference_auto_unspoil_images", true);
+            postThumbnailRemoveImageSpoilers = new BooleanSetting(provider, "preference_reveal_image_spoilers", false);
+            mediaViewerRevealImageSpoilers = new BooleanSetting(provider, "preference_auto_unspoil_images", true);
             transparencyOn = new BooleanSetting(provider, "image_transparency_on", false);
 
             //Elsewhere
@@ -547,6 +553,7 @@ public class ChanSettings {
             // General
             autoRefreshThread = new BooleanSetting(provider, "preference_auto_refresh_thread", true);
             controllerSwipeable = new BooleanSetting(provider, "preference_controller_swipeable", true);
+            viewThreadControllerSwipeable = new BooleanSetting(provider, "preference_view_thread_controller_swipeable", true);
             replyLayoutOpenCloseGestures = new BooleanSetting(provider, "reply_layout_open_close_gestures", true);
             openLinkConfirmation = new BooleanSetting(provider, "preference_open_link_confirmation", false);
             jsCaptchaCookies = new StringSetting(provider, "js_captcha_cookies", EMPTY_JSON);
@@ -577,7 +584,7 @@ public class ChanSettings {
             videoDefaultMuted = new BooleanSetting(provider, "preference_video_default_muted", true);
             headsetDefaultMuted = new BooleanSetting(provider, "preference_headset_default_muted", true);
             videoAlwaysResetToStart = new BooleanSetting(provider, "preference_video_always_reset_to_start", false);
-            mediaViewerMaxOffscreenPages = new IntegerSetting(provider, "preference_media_viewer_max_offscreen_pages", getMediaViewerOffscreenPagesDefault());
+            mediaViewerMaxOffscreenPages = new IntegerSetting(provider, "preference_media_viewer_max_offscreen_pages", 1);
             mediaViewerAutoSwipeAfterDownload = new BooleanSetting(provider, "preference_media_viewer_auto_swipe_after_download", false);
             mediaViewerDrawBehindNotch = new BooleanSetting(provider, "preference_media_viewer_draw_behind_notch", true);
             mediaViewerSoundPostsEnabled = new BooleanSetting(provider, "preference_media_viewer_sound_posts_enabled", false);
@@ -645,8 +652,12 @@ public class ChanSettings {
             );
             checkUpdateApkVersionCode = new BooleanSetting(provider, "check_update_apk_version_code", true);
             showMpvInternalLogs = new BooleanSetting(provider, "show_mpv_internal_logs", chanSettingsInfo.isDevBuild());
+
+            funThingsAreFun = new BooleanSetting(provider, "fun_things_are_fun", true);
             force4chanBirthdayMode = new BooleanSetting(provider, "force_4chan_birthday_mode", false);
             forceHalloweenMode = new BooleanSetting(provider, "force_halloween_mode", false);
+            forceChristmasMode = new BooleanSetting(provider, "force_christmas_mode", false);
+            forceNewYearMode = new BooleanSetting(provider, "force_new_year_mode", false);
             //endregion
 
             //region DATA
@@ -714,20 +725,15 @@ public class ChanSettings {
                     "drawer_show_delete_button_shortcut",
                     true
             );
+            drawerDeleteBookmarksWhenDeletingNavHistory = new BooleanSetting(provider, "drawer_delete_bookmarks_when_deleting_nav_history", false);
+            drawerDeleteNavHistoryWhenBookmarkDeleted = new BooleanSetting(provider, "drawer_delete_nav_history_when_bookmark_deleted", false);
+            globalNsfwMode = new BooleanSetting(provider, "global_nsfw_mode", false);
         } catch (Throwable error) {
             // If something crashes while the settings are initializing we at least will have the
             // stacktrace. Otherwise we won't because of Feather.
             Logger.e(TAG, "Error while initializing the settings", error);
             throw error;
         }
-    }
-
-    private static Integer getMediaViewerOffscreenPagesDefault() {
-        if (isLowRamDevice()) {
-            return 1;
-        }
-
-        return 2;
     }
 
     public static int mediaViewerOffscreenPagesCount() {
@@ -827,6 +833,22 @@ public class ChanSettings {
 
     public static File getMainSharedPrefsFileForThisFlavor() {
         return new File(getAppDir(), sharedPrefsFile.getValue());
+    }
+
+    public static int detailsSizeSp() {
+        return Integer.parseInt(ChanSettings.fontSize.get()) - 2;
+    }
+
+    public static int codeTagFontSizePx() {
+        return Integer.parseInt(ChanSettings.fontSize.get()) - 2;
+    }
+
+    public static int sjisTagFontSizePx() {
+        return 8;
+    }
+
+    public static int redTextFontSizePx() {
+        return Integer.parseInt(ChanSettings.fontSize.get()) + 2;
     }
 
     public static boolean isSlideLayoutMode() {

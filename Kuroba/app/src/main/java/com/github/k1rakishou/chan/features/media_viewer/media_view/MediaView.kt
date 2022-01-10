@@ -10,6 +10,7 @@ import androidx.annotation.CallSuper
 import com.github.k1rakishou.ChanSettings
 import com.github.k1rakishou.chan.R
 import com.github.k1rakishou.chan.core.base.KurobaCoroutineScope
+import com.github.k1rakishou.chan.core.cache.CacheFileType
 import com.github.k1rakishou.chan.core.cache.CacheHandler
 import com.github.k1rakishou.chan.core.cache.FileCacheListener
 import com.github.k1rakishou.chan.core.cache.FileCacheV2
@@ -20,10 +21,11 @@ import com.github.k1rakishou.chan.core.manager.ThreadDownloadManager
 import com.github.k1rakishou.chan.features.media_viewer.MediaLocation
 import com.github.k1rakishou.chan.features.media_viewer.MediaViewerControllerViewModel
 import com.github.k1rakishou.chan.features.media_viewer.MediaViewerToolbar
-import com.github.k1rakishou.chan.features.media_viewer.MediaViewerToolbarViewModel
 import com.github.k1rakishou.chan.features.media_viewer.ViewableMedia
 import com.github.k1rakishou.chan.features.media_viewer.helper.ChanPostBackgroundColorStorage
 import com.github.k1rakishou.chan.features.media_viewer.helper.CloseMediaActionHelper
+import com.github.k1rakishou.chan.features.media_viewer.strip.MediaViewerActionStrip
+import com.github.k1rakishou.chan.features.media_viewer.strip.MediaViewerBottomActionStripCallbacks
 import com.github.k1rakishou.chan.ui.theme.widget.TouchBlockingFrameLayoutNoBackground
 import com.github.k1rakishou.chan.ui.view.CircularChunkedLoadingBar
 import com.github.k1rakishou.chan.ui.widget.CancellableToast
@@ -37,6 +39,7 @@ import com.github.k1rakishou.fsaf.FileManager
 import com.github.k1rakishou.fsaf.file.ExternalFile
 import com.github.k1rakishou.fsaf.file.RawFile
 import com.github.k1rakishou.model.data.descriptor.ChanDescriptor
+import com.github.k1rakishou.model.data.descriptor.PostDescriptor
 import com.google.android.exoplayer2.upstream.DataSource
 import dagger.Lazy
 import kotlinx.coroutines.CompletableDeferred
@@ -56,6 +59,7 @@ abstract class MediaView<T : ViewableMedia, S : MediaViewState> constructor(
   val mediaViewState: S
 ) : TouchBlockingFrameLayoutNoBackground(context, attributeSet, 0),
   MediaViewerToolbar.MediaViewerToolbarCallbacks,
+  MediaViewerBottomActionStripCallbacks,
   AudioPlayerView.AudioPlayerCallbacks {
   abstract val viewableMedia: T
   abstract val pagerPosition: Int
@@ -82,6 +86,7 @@ abstract class MediaView<T : ViewableMedia, S : MediaViewState> constructor(
   private val controllerViewModel by (context as ComponentActivity).viewModels<MediaViewerControllerViewModel>()
 
   private var _mediaViewToolbar: MediaViewerToolbar? = null
+
   protected val mediaViewToolbar: MediaViewerToolbar?
     get() = _mediaViewToolbar
 
@@ -91,14 +96,15 @@ abstract class MediaView<T : ViewableMedia, S : MediaViewState> constructor(
 
   protected val cancellableToast by lazy { CancellableToast() }
   protected val scope = KurobaCoroutineScope()
-  private val toolbarViewModel by (context as ComponentActivity).viewModels<MediaViewerToolbarViewModel>()
 
   protected val pauseInBg: Boolean
     get() = ChanSettings.mediaViewerPausePlayersWhenInBackground.get()
 
-  protected val audioPlayerView: AudioPlayerView by lazy {
+  protected val audioPlayerView: AudioPlayerView? by lazy {
     return@lazy findViewById<AudioPlayerView>(R.id.audio_player_view)
   }
+
+  abstract val mediaViewerActionStrip: MediaViewerActionStrip?
 
   val bound: Boolean
     get() = _bound
@@ -117,7 +123,7 @@ abstract class MediaView<T : ViewableMedia, S : MediaViewState> constructor(
   }
 
   fun markMediaAsDownloaded() {
-    _mediaViewToolbar?.markMediaAsDownloaded()
+    mediaViewerActionStrip?.markMediaAsDownloaded()
   }
 
   fun onUpdateTransparency() {
@@ -148,14 +154,13 @@ abstract class MediaView<T : ViewableMedia, S : MediaViewState> constructor(
     _bound = true
     bind()
 
-    if (mediaViewState.audioPlayerViewState != null) {
-      audioPlayerView.bind(
+    if (audioPlayerView != null && mediaViewState.audioPlayerViewState != null) {
+      audioPlayerView?.bind(
         audioPlayerCallbacks = this,
         viewableMedia = viewableMedia,
         cacheHandler = cacheHandler.get(),
         audioPlayerViewState = mediaViewState.audioPlayerViewState,
         mediaViewContract = mediaViewContract,
-        globalWindowInsetsManager = globalWindowInsetsManager,
         threadDownloadManager = threadDownloadManager,
         cachedHttpDataSourceFactory = cachedHttpDataSourceFactory,
         fileDataSourceFactory = fileDataSourceFactory,
@@ -166,13 +171,18 @@ abstract class MediaView<T : ViewableMedia, S : MediaViewState> constructor(
     Logger.d(TAG, "onBind(${pagerPosition}/${totalPageItemsCount}, ${viewableMedia.mediaLocation})")
   }
 
-  fun onShow(mediaViewerToolbar: MediaViewerToolbar, isLifecycleChange: Boolean) {
+  fun onShow(
+    mediaViewerToolbar: MediaViewerToolbar,
+    isLifecycleChange: Boolean
+  ) {
     _shown = true
     this._mediaViewToolbar = mediaViewerToolbar
     this._mediaViewToolbar!!.attach(mediaViewContract.viewerChanDescriptor, viewableMedia, this)
 
-    if (mediaViewState.audioPlayerViewState != null) {
-      audioPlayerView.show(isLifecycleChange)
+    this.mediaViewerActionStrip?.attach(mediaViewContract.viewerChanDescriptor, viewableMedia, this)
+
+    if (audioPlayerView != null && mediaViewState.audioPlayerViewState != null) {
+      audioPlayerView?.show(isLifecycleChange)
     }
 
     show(isLifecycleChange)
@@ -185,8 +195,10 @@ abstract class MediaView<T : ViewableMedia, S : MediaViewState> constructor(
     this._mediaViewToolbar?.detach()
     this._mediaViewToolbar = null
 
-    if (mediaViewState.audioPlayerViewState != null) {
-      audioPlayerView.hide(
+    this.mediaViewerActionStrip?.detach()
+
+    if (audioPlayerView != null && mediaViewState.audioPlayerViewState != null) {
+      audioPlayerView?.hide(
         isLifecycleChange = isLifecycleChange,
         isPausing = isPausing,
         isBecomingInactive = isBecomingInactive
@@ -207,9 +219,10 @@ abstract class MediaView<T : ViewableMedia, S : MediaViewState> constructor(
     _bound = false
     _preloadingCalled = false
     _mediaViewToolbar?.onDestroy()
+    mediaViewerActionStrip?.onDestroy()
 
-    if (mediaViewState.audioPlayerViewState != null) {
-      audioPlayerView.unbind()
+    if (audioPlayerView != null && mediaViewState.audioPlayerViewState != null) {
+      audioPlayerView?.unbind()
     }
 
     cancellableToast.cancel()
@@ -230,16 +243,27 @@ abstract class MediaView<T : ViewableMedia, S : MediaViewState> constructor(
 
   }
 
+  protected fun updateComponentsWithViewableMedia(
+    currentIndex: Int,
+    totalMediaCount: Int,
+    viewableMedia: ViewableMedia
+  ) {
+    mediaViewToolbar?.updateWithViewableMedia(currentIndex, totalMediaCount, viewableMedia)
+    mediaViewerActionStrip?.updateWithViewableMedia(currentIndex, totalMediaCount, viewableMedia)
+  }
+
   @CallSuper
   open fun onSystemUiVisibilityChanged(systemUIHidden: Boolean) {
     if (systemUIHidden) {
-      mediaViewToolbar?.hideToolbar()
+      mediaViewToolbar?.hide()
+      mediaViewerActionStrip?.hide()
     } else {
-      mediaViewToolbar?.showToolbar()
+      mediaViewToolbar?.show()
+      mediaViewerActionStrip?.show()
     }
 
-    if (mediaViewState.audioPlayerViewState != null) {
-      audioPlayerView.onSystemUiVisibilityChanged(systemUIHidden)
+    if (audioPlayerView != null && mediaViewState.audioPlayerViewState != null) {
+      audioPlayerView?.onSystemUiVisibilityChanged(systemUIHidden)
     }
   }
 
@@ -268,6 +292,14 @@ abstract class MediaView<T : ViewableMedia, S : MediaViewState> constructor(
     mediaViewContract.onOptionsButtonClick(viewableMedia)
   }
 
+  override fun onShowRepliesButtonClick(postDescriptor: PostDescriptor) {
+    mediaViewContract.showReplyChain(postDescriptor)
+  }
+
+  override fun onGoToPostMediaClick(viewableMedia: ViewableMedia, postDescriptor: PostDescriptor) {
+    mediaViewContract.onGoToPostMediaClick(viewableMedia, postDescriptor)
+  }
+
   protected fun createGestureAction(isTopGesture: Boolean): CloseMediaActionHelper.GestureInfo? {
     val gestureSetting = if (isTopGesture) {
       ChanSettings.mediaViewerTopGestureAction.get()
@@ -280,13 +312,13 @@ abstract class MediaView<T : ViewableMedia, S : MediaViewState> constructor(
         return CloseMediaActionHelper.GestureInfo(
           gestureLabelText = AppModuleAndroidUtils.getString(R.string.download),
           isClosingMediaViewerGesture = false,
-          onGestureTriggeredFunc = { mediaViewToolbar?.downloadMedia() },
+          onGestureTriggeredFunc = { mediaViewerActionStrip?.downloadMedia() },
           gestureCanBeExecuted = {
             if (!gestureCanBeExecuted(gestureSetting)) {
               return@GestureInfo false
             }
 
-            return@GestureInfo mediaViewToolbar?.isDownloadAllowed() ?: false
+            return@GestureInfo mediaViewerActionStrip?.isDownloadAllowed() ?: false
           }
         )
       }
@@ -356,9 +388,10 @@ abstract class MediaView<T : ViewableMedia, S : MediaViewState> constructor(
     )
 
     return fileCacheV2.enqueueDownloadFileRequest(
-      mediaLocationRemote.url,
-      extraInfo,
-      object : FileCacheListener() {
+      url = mediaLocationRemote.url,
+      cacheFileType = CacheFileType.PostMediaFull,
+      extraInfo = extraInfo,
+      callback = object : FileCacheListener() {
         override fun onStart(chunksCount: Int) {
           super.onStart(chunksCount)
           BackgroundUtils.ensureMainThread()
@@ -403,7 +436,7 @@ abstract class MediaView<T : ViewableMedia, S : MediaViewState> constructor(
     )
   }
 
-  protected fun canAutoLoad(): Boolean {
+  protected fun canAutoLoad(cacheFileType: CacheFileType): Boolean {
     val threadDescriptor = viewableMedia.viewableMediaMeta.ownerPostDescriptor?.threadDescriptor()
     if (threadDescriptor != null) {
       val canUseThreadDownloaderCache = runBlocking { threadDownloadManager.canUseThreadDownloaderCache(threadDescriptor) }
@@ -414,7 +447,11 @@ abstract class MediaView<T : ViewableMedia, S : MediaViewState> constructor(
       // fallthrough
     }
 
-    return MediaViewerControllerViewModel.canAutoLoad(cacheHandler.get(), viewableMedia)
+    return MediaViewerControllerViewModel.canAutoLoad(
+      cacheHandler = cacheHandler.get(),
+      viewableMedia = viewableMedia,
+      cacheFileType = cacheFileType
+    )
   }
 
   private suspend fun tryLoadFromExternalDiskCache(

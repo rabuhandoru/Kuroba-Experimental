@@ -27,7 +27,6 @@ import com.github.k1rakishou.chan.core.site.parser.search.SimpleCommentParser;
 import com.github.k1rakishou.chan.core.site.sites.lynxchan.engine.LynxchanGetBoardsUseCase;
 import com.github.k1rakishou.chan.core.usecase.BookmarkFilterWatchableThreadsUseCase;
 import com.github.k1rakishou.chan.core.usecase.CatalogDataPreloader;
-import com.github.k1rakishou.chan.core.usecase.CreateBoardManuallyUseCase;
 import com.github.k1rakishou.chan.core.usecase.DownloadThemeJsonFilesUseCase;
 import com.github.k1rakishou.chan.core.usecase.ExportBackupFileUseCase;
 import com.github.k1rakishou.chan.core.usecase.ExportDownloadedThreadAsHtmlUseCase;
@@ -48,6 +47,7 @@ import com.github.k1rakishou.chan.core.usecase.ThreadDataPreloader;
 import com.github.k1rakishou.chan.core.usecase.ThreadDownloaderPersistPostsInDatabaseUseCase;
 import com.github.k1rakishou.chan.core.usecase.TwoCaptchaCheckBalanceUseCase;
 import com.github.k1rakishou.chan.features.posting.solvers.two_captcha.TwoCaptchaSolver;
+import com.github.k1rakishou.chan.features.thirdeye.ThirdEyeManager;
 import com.github.k1rakishou.common.AppConstants;
 import com.github.k1rakishou.core_logger.Logger;
 import com.github.k1rakishou.core_themes.ThemeEngine;
@@ -77,7 +77,8 @@ public class UseCaseModule {
             SiteManager siteManager,
             ChanThreadManager chanThreadManager,
             PostFilterManager postFilterManager,
-            ChanFilterManager chanFilterManager
+            ChanFilterManager chanFilterManager,
+            ThirdEyeManager thirdEyeManager
     ) {
         Logger.deps("ExtractPostMapInfoHolderUseCase");
         return new ExtractPostMapInfoHolderUseCase(
@@ -85,7 +86,8 @@ public class UseCaseModule {
                 siteManager,
                 chanThreadManager,
                 postFilterManager,
-                chanFilterManager
+                chanFilterManager,
+                thirdEyeManager
         );
     }
 
@@ -244,19 +246,6 @@ public class UseCaseModule {
                 appContext,
                 appConstants,
                 fileManager
-        );
-    }
-
-    @Provides
-    @Singleton
-    public CreateBoardManuallyUseCase provideCreateBoardManuallyUseCase(
-            SiteManager siteManager,
-            RealProxiedOkHttpClient proxiedOkHttpClient
-    ) {
-        Logger.deps("CreateBoardManuallyUseCase");
-        return new CreateBoardManuallyUseCase(
-                siteManager,
-                proxiedOkHttpClient
         );
     }
 

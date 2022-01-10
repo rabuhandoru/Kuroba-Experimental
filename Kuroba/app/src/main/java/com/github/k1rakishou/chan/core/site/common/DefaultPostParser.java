@@ -16,9 +16,6 @@
  */
 package com.github.k1rakishou.chan.core.site.common;
 
-import static com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.sp;
-
-import android.graphics.Color;
 import android.text.Spannable;
 import android.text.SpannableString;
 import android.text.SpannableStringBuilder;
@@ -40,16 +37,7 @@ import com.github.k1rakishou.core_parser.comment.HtmlDocument;
 import com.github.k1rakishou.core_parser.comment.HtmlNode;
 import com.github.k1rakishou.core_parser.comment.HtmlParser;
 import com.github.k1rakishou.core_parser.comment.HtmlTag;
-import com.github.k1rakishou.core_spannable.AbsoluteSizeSpanHashed;
-import com.github.k1rakishou.core_spannable.BackgroundColorSpanHashed;
-import com.github.k1rakishou.core_spannable.ColorizableForegroundColorSpan;
-import com.github.k1rakishou.core_spannable.ForegroundColorSpanHashed;
 import com.github.k1rakishou.core_spannable.PostLinkable;
-import com.github.k1rakishou.core_spannable.PosterIdMarkerSpan;
-import com.github.k1rakishou.core_spannable.PosterNameMarkerSpan;
-import com.github.k1rakishou.core_spannable.PosterTripcodeMarkerSpan;
-import com.github.k1rakishou.core_themes.ChanThemeColorId;
-import com.github.k1rakishou.core_themes.ThemeEngine;
 import com.github.k1rakishou.model.data.post.ChanPost;
 import com.github.k1rakishou.model.data.post.ChanPostBuilder;
 
@@ -116,17 +104,6 @@ public class DefaultPostParser implements PostParser {
             builder.subject = Parser.unescapeEntities(builder.subject.toString(), false);
         }
 
-        parseSpans(builder);
-    }
-
-    /**
-     * Parse the comment, subject, tripcodes, names etc. as spannables.<br>
-     * This is done on a background thread for performance, even when it is UI code.<br>
-     * The results will be placed on the Post.*Span members.
-     *
-     * @param builder Post builder to get data from
-     */
-    private void parseSpans(ChanPostBuilder builder) {
         boolean anonymize = ChanSettings.anonymize.get();
         boolean anonymizeIds = ChanSettings.anonymizeIds.get();
 
@@ -142,159 +119,6 @@ public class DefaultPostParser implements PostParser {
         if (builder.name.equals(defaultName()) && !ChanSettings.showAnonymousName.get()) {
             builder.name("");
         }
-
-        SpannableString nameSpan = null;
-        SpannableString tripcodeSpan = null;
-        SpannableString idSpan = null;
-        SpannableString capcodeSpan = null;
-
-        int detailsSizePx = sp(Integer.parseInt(ChanSettings.fontSize.get()) - 4);
-        if (!TextUtils.isEmpty(builder.subject)) {
-            SpannableString subjectSpan = new SpannableString(builder.subject);
-
-            subjectSpan.setSpan(
-                    new ColorizableForegroundColorSpan(ChanThemeColorId.PostSubjectColor),
-                    0,
-                    subjectSpan.length(),
-                    0
-            );
-
-            builder.subject = subjectSpan;
-        }
-
-        if (!TextUtils.isEmpty(builder.name)) {
-            nameSpan = new SpannableString(builder.name);
-            nameSpan.setSpan(new ColorizableForegroundColorSpan(ChanThemeColorId.PostNameColor), 0, nameSpan.length(), 0);
-            nameSpan.setSpan(new PosterNameMarkerSpan(), 0, nameSpan.length(), 0);
-        }
-
-        if (!TextUtils.isEmpty(builder.tripcode)) {
-            CharSequence tripcode = extractTripcode(builder);
-            if (!StringsKt.isBlank(tripcode)) {
-                // This is kinda dumb but that's how it was originally and now it's the same in the DB
-                // so changing it is a huge pain in the ass.
-                tripcodeSpan = new SpannableString(tripcode);
-                tripcodeSpan.setSpan(new ColorizableForegroundColorSpan(ChanThemeColorId.PostNameColor), 0, tripcodeSpan.length(), 0);
-                tripcodeSpan.setSpan(new AbsoluteSizeSpanHashed(detailsSizePx), 0, tripcodeSpan.length(), 0);
-                tripcodeSpan.setSpan(new PosterTripcodeMarkerSpan(), 0, tripcodeSpan.length(), 0);
-            }
-        }
-
-        if (!TextUtils.isEmpty(builder.posterId)) {
-            idSpan = new SpannableString(formatPosterId(builder));
-
-            int backgroundColor = Color.BLACK;
-            if (ThemeEngine.isDarkColor(builder.idColor)) {
-                backgroundColor = Color.WHITE;
-            }
-
-            idSpan.setSpan(new ForegroundColorSpanHashed(backgroundColor), 0, idSpan.length(), 0);
-            idSpan.setSpan(new BackgroundColorSpanHashed(builder.idColor), 0, idSpan.length(), 0);
-            idSpan.setSpan(new AbsoluteSizeSpanHashed(detailsSizePx), 0, idSpan.length(), 0);
-            idSpan.setSpan(new PosterIdMarkerSpan(), 0, idSpan.length(), 0);
-        }
-
-        if (!TextUtils.isEmpty(builder.moderatorCapcode)) {
-            capcodeSpan = new SpannableString(formatCapcode(builder));
-            capcodeSpan.setSpan(
-                    new ColorizableForegroundColorSpan(ChanThemeColorId.AccentColor),
-                    0,
-                    capcodeSpan.length(),
-                    0
-            );
-            capcodeSpan.setSpan(
-                    new AbsoluteSizeSpanHashed(detailsSizePx),
-                    0,
-                    capcodeSpan.length(),
-                    0
-            );
-        }
-
-        SpannableStringBuilder nameTripcodeIdCapcodeSpan = new SpannableStringBuilder("");
-        if (nameSpan != null) {
-            nameTripcodeIdCapcodeSpan
-                    .append(nameSpan)
-                    .append(" ");
-        }
-
-        if (tripcodeSpan != null) {
-            nameTripcodeIdCapcodeSpan
-                    .append(tripcodeSpan)
-                    .append(" ");
-        }
-
-        if (idSpan != null) {
-            nameTripcodeIdCapcodeSpan
-                    .append(idSpan)
-                    .append(" ");
-        }
-
-        if (capcodeSpan != null) {
-            nameTripcodeIdCapcodeSpan
-                    .append(capcodeSpan)
-                    .append(" ");
-        }
-
-        builder.tripcode = SpannableString.valueOf(nameTripcodeIdCapcodeSpan);
-    }
-
-    private CharSequence extractTripcode(ChanPostBuilder builder) {
-        if (TextUtils.isEmpty(builder.tripcode)) {
-            return builder.tripcode;
-        }
-
-        String formattedCapcode = "";
-        String formattedPosterId = "";
-        String name = "";
-
-        if (!TextUtils.isEmpty(builder.moderatorCapcode)) {
-            formattedCapcode = formatCapcode(builder);
-        }
-        if (!TextUtils.isEmpty(builder.posterId)) {
-            formattedPosterId = formatPosterId(builder);
-        }
-        if (!TextUtils.isEmpty(builder.name)) {
-            name = builder.name;
-        }
-
-        if (formattedCapcode.isEmpty() && formattedPosterId.isEmpty() && name.isEmpty()) {
-            return builder.tripcode;
-        }
-
-        StringBuilder tripcodeStringBuilder = new StringBuilder(builder.tripcode);
-
-        if (formattedCapcode.length() > 0) {
-            int index = tripcodeStringBuilder.indexOf(formattedCapcode);
-            if (index >= 0) {
-                tripcodeStringBuilder.replace(index, index + formattedCapcode.length(), "");
-            }
-        }
-
-        if (formattedPosterId.length() > 0) {
-            int index = tripcodeStringBuilder.indexOf(formattedPosterId);
-            if (index >= 0) {
-                tripcodeStringBuilder.replace(index, index + formattedPosterId.length(), "");
-            }
-        }
-
-        if (name.length() > 0) {
-            int index = tripcodeStringBuilder.indexOf(name);
-            if (index >= 0) {
-                tripcodeStringBuilder.replace(index, index + name.length(), "");
-            }
-        }
-
-        return tripcodeStringBuilder.toString().trim();
-    }
-
-    @NonNull
-    private String formatCapcode(ChanPostBuilder builder) {
-        return "Capcode: " + builder.moderatorCapcode;
-    }
-
-    @NonNull
-    private String formatPosterId(ChanPostBuilder builder) {
-        return "  ID: " + builder.posterId + "  ";
     }
 
     @Override
@@ -435,7 +259,8 @@ public class DefaultPostParser implements PostParser {
                 archiveType,
                 boardCode,
                 threadNo,
-                postNo
+                postNo,
+                0L
         );
 
         return new PostLinkable(

@@ -26,6 +26,7 @@ import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -78,10 +79,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.isUnspecified
 import androidx.compose.ui.input.pointer.consumeAllChanges
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.Measurable
+import androidx.compose.ui.layout.Placeable
+import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -91,6 +96,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -105,12 +111,11 @@ import kotlinx.coroutines.flow.collect
 import java.util.*
 import kotlin.math.roundToInt
 
-@Composable
-fun KurobaComposeProgressIndicator(modifier: Modifier = Modifier, overrideColor: Color? = null) {
-  Box(modifier = Modifier
-    .fillMaxSize()
-    .then(modifier)) {
+private val DefaultFillMaxSizeModifier: Modifier = Modifier.fillMaxSize()
 
+@Composable
+fun KurobaComposeProgressIndicator(modifier: Modifier = DefaultFillMaxSizeModifier, overrideColor: Color? = null) {
+  Box(modifier = modifier) {
     val color = if (overrideColor == null) {
       val chanTheme = LocalChanTheme.current
       remember(key1 = chanTheme.accentColor) { Color(chanTheme.accentColor) }
@@ -128,14 +133,13 @@ fun KurobaComposeProgressIndicator(modifier: Modifier = Modifier, overrideColor:
 }
 
 @Composable
-fun KurobaComposeErrorMessage(error: Throwable, modifier: Modifier = Modifier) {
+fun KurobaComposeErrorMessage(error: Throwable, modifier: Modifier = DefaultFillMaxSizeModifier) {
   KurobaComposeErrorMessage(error.errorMessageOrClassName(), modifier)
 }
 
 @Composable
-fun KurobaComposeErrorMessage(errorMessage: String, modifier: Modifier = Modifier) {
+fun KurobaComposeErrorMessage(errorMessage: String, modifier: Modifier = DefaultFillMaxSizeModifier) {
   Box(modifier = Modifier
-    .fillMaxSize()
     .padding(8.dp)
     .then(modifier)
   ) {
@@ -325,25 +329,27 @@ fun KurobaComposeCustomTextField(
   modifier: Modifier = Modifier,
   enabled: Boolean = true,
   textColor: Color = Color.Unspecified,
-  onBackgroundColor: Color = Color.Unspecified,
+  parentBackgroundColor: Color = Color.Unspecified,
   drawBottomIndicator: Boolean = true,
-  fontSize: TextUnit = TextUnit.Unspecified,
+  fontSize: TextUnit = 16.sp,
   maxLines: Int = Int.MAX_VALUE,
   singleLine: Boolean = false,
   labelText: String? = null,
+  maxTextLength: Int = Int.MAX_VALUE,
   keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
   keyboardActions: KeyboardActions = KeyboardActions(),
   interactionSource: MutableInteractionSource = remember { MutableInteractionSource() }
 ) {
   val chanTheme = LocalChanTheme.current
   val textFieldColors = chanTheme.textFieldColors()
-
   val cursorBrush = remember(key1 = chanTheme) { SolidColor(chanTheme.accentColorCompose) }
+  val lineTotalHeight = if (drawBottomIndicator) 4.dp else 0.dp
+  val labelTextBottomOffset = if (drawBottomIndicator) 2.dp else 0.dp
 
   val actualTextColor = if (!textColor.isUnspecified) {
     textColor
   } else {
-    if (ThemeEngine.isDarkColor(onBackgroundColor)) {
+    if (ThemeEngine.isDarkColor(parentBackgroundColor)) {
       Color.White
     } else {
       Color.Black
@@ -379,8 +385,12 @@ fun KurobaComposeCustomTextField(
 
   var localInput by remember { mutableStateOf(value) }
 
-  Box {
-    if (labelText != null) {
+  KurobaComposeCustomTextFieldInternal(
+    modifier = modifier,
+    labelText = labelText,
+    labelTextBottomOffset = labelTextBottomOffset,
+    maxTextLength = maxTextLength,
+    labelTextContent = {
       val isFocused by interactionSource.collectIsFocusedAsState()
 
       AnimatedVisibility(
@@ -394,11 +404,11 @@ fun KurobaComposeCustomTextField(
           ContentAlpha.disabled
         }
 
-        val hintColor = remember(key1 = onBackgroundColor) {
-          if (onBackgroundColor.isUnspecified) {
+        val hintColor = remember(key1 = parentBackgroundColor) {
+          if (parentBackgroundColor.isUnspecified) {
             Color.DarkGray.copy(alpha = alpha)
           } else {
-            if (ThemeEngine.isDarkColor(onBackgroundColor)) {
+            if (ThemeEngine.isDarkColor(parentBackgroundColor)) {
               Color.LightGray.copy(alpha = alpha)
             } else {
               Color.DarkGray.copy(alpha = alpha)
@@ -407,35 +417,165 @@ fun KurobaComposeCustomTextField(
         }
 
         Text(
-          text = labelText,
-          fontSize = 16.sp,
+          text = labelText!!,
+          fontSize = fontSize,
           color = hintColor
         )
       }
-    }
+    },
+    textFieldContent = {
+      CompositionLocalProvider(LocalTextSelectionColors provides textSelectionColors) {
+        BasicTextField(
+          modifier = indicatorLineModifier
+            .padding(bottom = lineTotalHeight),
+          enabled = enabled,
+          textStyle = textStyle,
+          singleLine = singleLine,
+          maxLines = maxLines,
+          cursorBrush = cursorBrush,
+          value = value,
+          keyboardOptions = keyboardOptions,
+          keyboardActions = keyboardActions,
+          interactionSource = interactionSource,
+          onValueChange = { text ->
+            localInput = text
+            onValueChange(text)
+          }
+        )
+      }
+    },
+    textCounterContent = {
+      val currentCounter = localInput.length
+      val maxCounter = maxTextLength
+      val counterText = remember(key1 = currentCounter, key2 = maxCounter) { "$currentCounter / $maxCounter" }
+      val counterTextColor = if (currentCounter > maxCounter) {
+        chanTheme.errorColorCompose
+      } else {
+        chanTheme.textColorHintCompose
+      }
 
-    CompositionLocalProvider(LocalTextSelectionColors provides textSelectionColors) {
-      BasicTextField(
-        modifier = modifier
-          .then(indicatorLineModifier)
-          .padding(bottom = 4.dp),
-        enabled = enabled,
-        textStyle = textStyle,
-        singleLine = singleLine,
-        maxLines = maxLines,
-        cursorBrush = cursorBrush,
-        value = value,
-        keyboardOptions = keyboardOptions,
-        keyboardActions = keyboardActions,
-        interactionSource = interactionSource,
-        onValueChange = { text ->
-          localInput = text
-          onValueChange(text)
+      Column {
+        Text(
+          text = counterText,
+          fontSize = 12.sp,
+          color = counterTextColor,
+        )
+      }
+    }
+  )
+}
+
+@Composable
+private fun KurobaComposeCustomTextFieldInternal(
+  modifier: Modifier,
+  labelText: String?,
+  labelTextBottomOffset: Dp,
+  maxTextLength: Int,
+  labelTextContent: @Composable () -> Unit,
+  textFieldContent: @Composable () -> Unit,
+  textCounterContent: @Composable () -> Unit
+) {
+  val componentsCount = 3
+  val labelTextSlotId = 0
+  val textCounterSlotId = 1
+  val textSlotId = 2
+
+  val labelTextBottomOffsetPx = with(LocalDensity.current) { labelTextBottomOffset.toPx().toInt() }
+
+  SubcomposeLayout(
+    modifier = modifier,
+    measurePolicy = { constraints ->
+      val measurables = arrayOfNulls<Measurable?>(componentsCount)
+
+      if (labelText != null) {
+        val labelTextMeasurable = this.subcompose(
+          slotId = labelTextSlotId,
+          content = { labelTextContent() }
+        ).firstOrNull()
+
+        measurables[labelTextSlotId] = labelTextMeasurable
+      }
+
+      if (maxTextLength != Int.MAX_VALUE) {
+        val textCounterMeasurable = this.subcompose(
+          slotId = textCounterSlotId,
+          content = { textCounterContent() }
+        ).firstOrNull()
+
+        measurables[textCounterSlotId] = textCounterMeasurable
+      }
+
+      val textFieldMeasurable = this.subcompose(
+        slotId = textSlotId,
+        content = { textFieldContent() }
+      ).firstOrNull()
+
+      measurables[textSlotId] = textFieldMeasurable
+
+      var maxHeight = 0
+      val placeables = arrayOfNulls<Placeable>(componentsCount)
+
+      measurables[labelTextSlotId]?.let { labelTextMeasurable ->
+        val placeable = labelTextMeasurable.measure(constraints)
+        maxHeight = Math.max(maxHeight, placeable.height)
+
+        placeables[labelTextSlotId] = placeable
+      }
+
+      // We are always supposed to have at least the text
+      measurables[textSlotId]!!.let { textMeasurable ->
+        val textCounterPlaceable = measurables[textCounterSlotId]?.let { textCounterMeasurable ->
+          val placeable = textCounterMeasurable.measure(Constraints(maxWidth = constraints.maxWidth))
+          placeables[textCounterSlotId] = placeable
+
+          return@let placeable
         }
-      )
-    }
-  }
 
+        val textCounterHeight = (textCounterPlaceable?.height ?: 0)
+
+        val textPlaceable = textMeasurable.measure(
+          constraints.copy(
+            maxHeight = constraints.maxHeight - textCounterHeight
+          )
+        )
+        placeables[textSlotId] = textPlaceable
+
+        maxHeight = Math.max(
+          maxHeight,
+          textPlaceable.height + textCounterHeight
+        )
+      }
+
+      layout(constraints.maxWidth, maxHeight) {
+        for ((index, placeable) in placeables.withIndex()) {
+          if (placeable == null) {
+            continue
+          }
+
+          when (index) {
+            labelTextSlotId -> {
+              if (maxHeight > placeable.height + labelTextBottomOffsetPx) {
+                val y = maxHeight - (placeable.height + labelTextBottomOffsetPx)
+                placeable.placeRelative(0, y)
+              } else {
+                placeable.placeRelative(0, 0)
+              }
+            }
+            textCounterSlotId -> {
+              placeable.placeRelative(0, 0)
+            }
+            textSlotId -> {
+              val textCounterHeight = placeables[textCounterSlotId]?.height ?: 0
+              placeable.placeRelative(0, textCounterHeight)
+            }
+            else -> {
+              // no-op
+            }
+          }
+        }
+      }
+    }
+  )
 }
 
 private fun Modifier.drawIndicatorLine(
@@ -664,7 +804,7 @@ fun Modifier.kurobaClickable(
       }
     }
 
-    then(
+    return@composed then(
       Modifier.combinedClickable(
         indication = rememberRipple(bounded = bounded, color = color),
         interactionSource = remember { MutableInteractionSource() },
@@ -700,11 +840,11 @@ fun KurobaSearchInput(
   chanTheme: ChanTheme,
   themeEngine: ThemeEngine,
   onBackgroundColor: Color,
-  searchQuery: MutableState<String>,
+  searchQueryState: MutableState<String>,
   onSearchQueryChanged: (String) -> Unit,
   labelText: String = stringResource(id = R.string.search_hint)
 ) {
-  var localQuery by remember { searchQuery }
+  var localQuery by remember { searchQueryState }
 
   Row(modifier = modifier) {
     Row(modifier = Modifier.wrapContentHeight()) {
@@ -729,7 +869,7 @@ fun KurobaSearchInput(
             .wrapContentHeight()
             .fillMaxWidth(),
           textColor = textColor,
-          onBackgroundColor = onBackgroundColor,
+          parentBackgroundColor = onBackgroundColor,
           fontSize = 16.sp,
           singleLine = true,
           maxLines = 1,
@@ -780,6 +920,55 @@ fun KurobaComposeSwitch(
     onCheckedChange = onCheckedChange,
     colors = chanTheme.switchColors(),
     modifier = modifier
+  )
+}
+
+@Composable
+fun KurobaComposeSelectionIndicator(
+  size: Dp = 24.dp,
+  currentlySelected: Boolean,
+  onSelectionChanged: (Boolean) -> Unit
+) {
+  val checkmark = painterResource(id = R.drawable.ic_blue_checkmark_24dp)
+  val circleWidth = with(LocalDensity.current) { 2.dp.toPx() }
+  val circleSize = with(LocalDensity.current) {
+    remember(key1 = size) { Size(size.toPx(), size.toPx()) }
+  }
+  val imageSize = remember(key1 = circleSize) {
+    Size(circleSize.width + circleWidth, circleSize.height + circleWidth)
+  }
+  val style = remember(key1 = circleWidth) {
+    Stroke(width = circleWidth)
+  }
+  
+  var selected by remember(key1 = currentlySelected) { mutableStateOf(currentlySelected) }
+
+  Canvas(
+    modifier = Modifier
+      .size(size)
+      .clickable {
+        selected = !selected
+        onSelectionChanged(selected)
+      },
+    onDraw = {
+      drawArc(
+        color = Color.White,
+        size = circleSize,
+        startAngle = 0f,
+        sweepAngle = 360f,
+        useCenter = false,
+        alpha = 1f,
+        style = style
+      )
+
+      if (selected) {
+        translate(left = -(circleWidth / 2), top = -(circleWidth / 2)) {
+          with(checkmark) {
+            draw(size = imageSize, alpha = 1f, colorFilter = null)
+          }
+        }
+      }
+    }
   )
 }
 

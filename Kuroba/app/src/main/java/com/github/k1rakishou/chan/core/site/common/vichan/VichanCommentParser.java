@@ -32,10 +32,14 @@ public class VichanCommentParser extends CommentParser implements ICommentParser
     public VichanCommentParser() {
         addDefaultRules();
 
-        rule(StyleRule.tagRule("p")
+        addRule(StyleRule.tagRule("p")
                 .withCssClass("quote")
                 .foregroundColorId(ChanThemeColorId.PostInlineQuoteColor)
                 .linkify());
+        addRule(StyleRule.tagRule("span")
+                .withCssClass("heading")
+                .bold()
+                .foregroundColorId(ChanThemeColorId.AccentColor));
     }
 
     @NonNull

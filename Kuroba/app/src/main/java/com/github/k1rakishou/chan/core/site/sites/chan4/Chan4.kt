@@ -23,6 +23,8 @@ import com.github.k1rakishou.chan.core.site.http.HttpCall
 import com.github.k1rakishou.chan.core.site.http.login.AbstractLoginRequest
 import com.github.k1rakishou.chan.core.site.http.login.Chan4LoginRequest
 import com.github.k1rakishou.chan.core.site.http.login.Chan4LoginResponse
+import com.github.k1rakishou.chan.core.site.http.report.PostReportData
+import com.github.k1rakishou.chan.core.site.http.report.PostReportResult
 import com.github.k1rakishou.chan.core.site.limitations.ConstantAttachablesCount
 import com.github.k1rakishou.chan.core.site.limitations.PasscodeDependantMaxAttachablesTotalSize
 import com.github.k1rakishou.chan.core.site.limitations.SitePostingLimitation
@@ -78,9 +80,6 @@ open class Chan4 : SiteBase() {
 
   private val siteRequestModifier by lazy { Chan4SiteRequestModifier(this, appConstants) }
 
-  override val canCreateBoardsManually: Boolean
-    get() = true
-
   override fun initialize() {
     super.initialize()
 
@@ -127,7 +126,9 @@ open class Chan4 : SiteBase() {
     )
   }
 
-  private val endpoints: SiteEndpoints = object : SiteEndpoints {
+  private val endpoints = Chan4Endpoints()
+
+  inner class Chan4Endpoints : SiteEndpoints {
     private val a = HttpUrl.Builder().scheme("https").host("a.4cdn.org").build()
     private val i = HttpUrl.Builder().scheme("https").host("i.4cdn.org").build()
     private val t = HttpUrl.Builder().scheme("https").host("i.4cdn.org").build()
@@ -274,7 +275,7 @@ open class Chan4 : SiteBase() {
         .build()
     }
 
-    private fun getSysEndpoint(boardDescriptor: BoardDescriptor?): HttpUrl {
+    fun getSysEndpoint(boardDescriptor: BoardDescriptor?): HttpUrl {
       if (boardDescriptor == null) {
         return sys4channel
       }
@@ -471,6 +472,18 @@ open class Chan4 : SiteBase() {
       ).execute()
     }
 
+    override suspend fun <T : PostReportData> reportPost(
+      postReportData: T
+    ): PostReportResult {
+      postReportData as PostReportData.Chan4
+
+      return Chan4ReportPostRequest(
+        siteManager = siteManager,
+        _proxiedOkHttpClient = proxiedOkHttpClient,
+        postReportData = postReportData
+      ).execute()
+    }
+
     private fun HttpUrl.Builder.addBoardCodeParameter(boardCode: String?): HttpUrl.Builder {
       if (boardCode.isNullOrEmpty()) {
         return this
@@ -630,6 +643,12 @@ open class Chan4 : SiteBase() {
 
     override fun modifyCaptchaGetRequest(site: Chan4, requestBuilder: Request.Builder) {
       super.modifyCaptchaGetRequest(site, requestBuilder)
+
+      addChan4CookieHeader(site, requestBuilder)
+    }
+
+    override fun modifyPostReportRequest(site: Chan4, requestBuilder: Request.Builder) {
+      super.modifyPostReportRequest(site, requestBuilder)
 
       addChan4CookieHeader(site, requestBuilder)
     }

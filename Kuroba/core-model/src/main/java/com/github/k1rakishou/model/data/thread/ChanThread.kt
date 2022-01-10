@@ -781,15 +781,16 @@ class ChanThread(
       chanPostId = oldChanPost.chanPostId,
       postDescriptor = oldChanPost.postDescriptor,
       repliesFrom = oldChanPost.repliesFrom,
-      postImages = mergePostImages(newChanPost.postImages, oldChanPost.postImages),
+      _postImages = mergePostImages(newChanPost.postImages, oldChanPost.postImages).toMutableList(),
       postIcons = newChanPost.postIcons,
       repliesTo = newChanPost.repliesTo,
       timestamp = newChanPost.timestamp,
       postComment = mergePostComments(oldChanPost.postComment, newChanPost.postComment),
       subject = newChanPost.subject,
-      fullTripcode = newChanPost.fullTripcode,
+      tripcode = newChanPost.tripcode,
       name = newChanPost.name,
       posterId = newChanPost.posterId,
+      posterIdColor = newChanPost.posterIdColor,
       moderatorCapcode = newChanPost.moderatorCapcode,
       isSavedReply = newChanPost.isSavedReply,
       isSage = newChanPost.isSage,
@@ -826,9 +827,10 @@ class ChanThread(
       repliesTo = newChanOriginalPost.repliesTo,
       postComment = mergePostComments(oldChanOriginalPost.postComment, newChanOriginalPost.postComment),
       subject = newChanOriginalPost.subject,
-      tripcode = newChanOriginalPost.fullTripcode,
+      tripcode = newChanOriginalPost.tripcode,
       name = newChanOriginalPost.name,
       posterId = newChanOriginalPost.posterId,
+      posterIdColor = newChanOriginalPost.posterIdColor,
       moderatorCapcode = newChanOriginalPost.moderatorCapcode,
       isSavedReply = newChanOriginalPost.isSavedReply,
       catalogRepliesCount = Math.max(oldChanOriginalPost.catalogRepliesCount, newChanOriginalPost.catalogRepliesCount),
@@ -884,7 +886,20 @@ class ChanThread(
       }
     }
 
-    return newPostImages
+    oldPostImages.forEach { oldPostImage ->
+      val alreadyContains = resultList.any { postImage ->
+        postImage.serverFilename == oldPostImage.serverFilename
+          && postImage.isInlined == oldPostImage.isInlined
+      }
+
+      if (alreadyContains) {
+        return@forEach
+      }
+
+      resultList += oldPostImage
+    }
+
+    return resultList
   }
 
   private fun handlePostContentLoadedMap(

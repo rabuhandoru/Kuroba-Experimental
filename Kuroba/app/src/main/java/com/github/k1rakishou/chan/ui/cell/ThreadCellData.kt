@@ -8,6 +8,7 @@ import com.github.k1rakishou.chan.core.manager.PostFilterManager
 import com.github.k1rakishou.chan.core.manager.SavedReplyManager
 import com.github.k1rakishou.chan.ui.adapter.PostsFilter
 import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.isDevBuild
+import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.isTablet
 import com.github.k1rakishou.chan.utils.BackgroundUtils
 import com.github.k1rakishou.common.bidirectionalSequenceIndexed
 import com.github.k1rakishou.common.mutableListWithCap
@@ -49,11 +50,7 @@ class ThreadCellData(
   var defaultBoardPostViewMode: ChanSettings.BoardPostViewMode = ChanSettings.boardPostViewMode.get()
   var defaultMarkedNo: Long? = null
   var defaultSearchQuery = PostCellData.SearchQuery()
-
-  var defaultShowDividerFunc = { postIndex: Int, totalPostsCount: Int ->
-    true
-  }
-
+  var defaultShowDividerFunc = { postIndex: Int, totalPostsCount: Int -> true }
   var error: String? = null
   var lastSeenIndicatorPosition: Int = -1
 
@@ -219,7 +216,8 @@ class ThreadCellData(
     val totalPostsCount = postIndexedList.size
     val resultList = mutableListWithCap<PostCellDataLazy>(totalPostsCount)
 
-    val fontSize = ChanSettings.fontSize.get().toInt()
+    val textSizeSp = ChanSettings.fontSize.get().toInt()
+    val detailsSizeSp = ChanSettings.detailsSizeSp()
     val boardPostsSortOrder = PostsFilter.Order.find(ChanSettings.boardOrder.get())
     val neverShowPages = ChanSettings.neverShowPages.get()
     val tapNoReply = ChanSettings.tapNoReply.get()
@@ -227,12 +225,14 @@ class ThreadCellData(
     val shiftPostComment = ChanSettings.shiftPostComment.get()
     val forceShiftPostComment = ChanSettings.forceShiftPostComment.get()
     val textOnly = ChanSettings.textOnly.get()
-    val postFileInfo = ChanSettings.postFileInfo.get()
+    val showPostFileInfo = ChanSettings.postFileInfo.get()
     val markUnseenPosts = ChanSettings.markUnseenPosts.get() && chanDescriptor.isThreadDescriptor()
     val markSeenThreads = ChanSettings.markSeenThreads.get() && chanDescriptor.isCatalogDescriptor()
     val chanTheme = theme.fullCopy()
     val postCellThumbnailSizePercents = ChanSettings.postCellThumbnailSizePercents.get()
     val boardPages = getBoardPages(chanDescriptor, neverShowPages, postCellCallback)
+    val isTablet = isTablet()
+    val isSplitLayout = ChanSettings.isSplitLayoutMode()
 
     val postAlignmentMode = when (chanDescriptor) {
       is ChanDescriptor.CatalogDescriptor,
@@ -268,9 +268,11 @@ class ThreadCellData(
         val postCellData = PostCellData(
           chanDescriptor = chanDescriptor,
           post = postIndexed.post,
+          postImages = postIndexed.post.postImages,
           postIndex = postIndexed.postIndex,
           postCellDataWidthNoPaddings = postCellDataWidthNoPaddings,
-          textSizeSp = fontSize,
+          textSizeSp = textSizeSp,
+          detailsSizeSp = detailsSizeSp,
           theme = chanTheme,
           postViewMode = postViewMode,
           markedPostNo = defaultMarkedNo,
@@ -286,7 +288,7 @@ class ThreadCellData(
           forceShiftPostComment = forceShiftPostComment,
           postMultipleImagesCompactMode = postMultipleImagesCompactMode,
           textOnly = textOnly,
-          postFileInfo = postFileInfo,
+          showPostFileInfo = showPostFileInfo,
           markUnseenPosts = markUnseenPosts,
           markSeenThreads = markSeenThreads,
           stub = filterStubMap[postDescriptor] ?: false,
@@ -297,7 +299,9 @@ class ThreadCellData(
           postCellThumbnailSizePercents = postCellThumbnailSizePercents,
           isSavedReply = postIndexed.post.isSavedReply,
           isReplyToSavedReply = postIndexed.post.repliesTo
-            .any { replyTo -> threadPostReplyMap[replyTo] == true }
+            .any { replyTo -> threadPostReplyMap[replyTo] == true },
+          isTablet = isTablet,
+          isSplitLayout = isSplitLayout,
         )
 
         postCellData.postCellCallback = postCellCallback
@@ -356,6 +360,8 @@ class ThreadCellData(
     lastSeenIndicatorPosition = -1
     defaultMarkedNo = null
     error = null
+    postCellCallback = null
+    _chanDescriptor = null
   }
 
   fun setSearchQuery(searchQuery: PostCellData.SearchQuery) {
@@ -389,6 +395,7 @@ class ThreadCellData(
 
         if (boardPostViewModeChanged) {
           postCellData.resetCommentTextCache()
+          postCellData.resetPostTitleCache()
         }
 
         if (compactChanged) {

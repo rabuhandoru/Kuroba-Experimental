@@ -2,9 +2,9 @@ package com.github.k1rakishou.model.mapper
 
 import android.text.SpannableString
 import androidx.core.text.toSpanned
+import com.github.k1rakishou.core_spannable.ParcelableSpannableString
 import com.github.k1rakishou.core_spannable.PostLinkable
-import com.github.k1rakishou.core_spannable.SpannableStringMapper
-import com.github.k1rakishou.core_spannable.serializable.SerializableSpannableString
+import com.github.k1rakishou.core_spannable.parcelable_spannable_string.ParcelableSpannableStringMapper
 import com.github.k1rakishou.model.data.descriptor.ChanDescriptor
 import com.github.k1rakishou.model.data.descriptor.PostDescriptor
 import com.github.k1rakishou.model.data.post.ChanOriginalPost
@@ -15,7 +15,6 @@ import com.github.k1rakishou.model.entity.chan.post.ChanPostIdEntity
 import com.github.k1rakishou.model.entity.chan.post.ChanTextSpanEntity
 import com.github.k1rakishou.model.entity.chan.thread.ChanThreadEntity
 import com.github.k1rakishou.model.source.local.ChanPostLocalSource
-import com.google.gson.Gson
 
 object ChanPostEntityMapper {
 
@@ -29,6 +28,7 @@ object ChanPostEntityMapper {
       timestamp = chanPost.timestamp,
       name = chanPost.name,
       posterId = chanPost.posterId,
+      posterIdColor = chanPost.posterIdColor,
       moderatorCapcode = chanPost.moderatorCapcode,
       isOp = chanPost is ChanOriginalPost,
       isSavedReply = chanPost.isSavedReply,
@@ -37,7 +37,6 @@ object ChanPostEntityMapper {
   }
 
   fun fromEntity(
-    gson: Gson,
     chanDescriptor: ChanDescriptor,
     chanThreadEntity: ChanThreadEntity,
     chanPostIdEntity: ChanPostIdEntity,
@@ -114,10 +113,11 @@ object ChanPostEntityMapper {
         deleted = chanPostEntity.deleted,
         timestamp = chanPostEntity.timestamp,
         name = chanPostEntity.name,
-        postComment = mapPostComment(gson, chanTextSpanEntityList),
-        subject = mapSubject(gson, chanTextSpanEntityList),
-        tripcode = mapTripcode(gson, chanTextSpanEntityList),
+        postComment = mapPostComment(chanTextSpanEntityList),
+        subject = mapSubject(chanTextSpanEntityList),
+        tripcode = mapTripcode(chanTextSpanEntityList),
         posterId = chanPostEntity.posterId,
+        posterIdColor = chanPostEntity.posterIdColor,
         moderatorCapcode = chanPostEntity.moderatorCapcode,
         isSavedReply = chanPostEntity.isSavedReply,
         isSage = chanPostEntity.isSage,
@@ -128,15 +128,16 @@ object ChanPostEntityMapper {
       ChanPost(
         chanPostId = chanPostEntity.chanPostId,
         postDescriptor = postDescriptor,
-        postImages = postImages,
+        _postImages = postImages.toMutableList(),
         postIcons = postIcons,
         repliesTo = repliesTo,
         timestamp = chanPostEntity.timestamp,
         name = chanPostEntity.name,
-        postComment = mapPostComment(gson, chanTextSpanEntityList),
-        subject = mapSubject(gson, chanTextSpanEntityList),
-        fullTripcode = mapTripcode(gson, chanTextSpanEntityList),
+        postComment = mapPostComment(chanTextSpanEntityList),
+        subject = mapSubject(chanTextSpanEntityList),
+        tripcode = mapTripcode(chanTextSpanEntityList),
         posterId = chanPostEntity.posterId,
+        posterIdColor = chanPostEntity.posterIdColor,
         moderatorCapcode = chanPostEntity.moderatorCapcode,
         isSavedReply = chanPostEntity.isSavedReply,
         deleted = chanPostEntity.deleted,
@@ -146,51 +147,36 @@ object ChanPostEntityMapper {
   }
 
   fun mapTripcode(
-    gson: Gson,
     chanTextSpanEntityList: List<ChanTextSpanEntity>?
   ): CharSequence {
-    val serializableSpannableTripcode = TextSpanMapper.fromEntity(
-      gson,
+    val tripcode = TextSpanMapper.fromEntity(
       chanTextSpanEntityList,
       ChanTextSpanEntity.TextType.Tripcode
-    ) ?: SerializableSpannableString()
+    ) ?: ParcelableSpannableString()
 
-    return SpannableStringMapper.deserializeSpannableString(
-      gson,
-      serializableSpannableTripcode
-    )
+    return ParcelableSpannableStringMapper.fromParcelableSpannableString(tripcode)
   }
 
   fun mapSubject(
-    gson: Gson,
     chanTextSpanEntityList: List<ChanTextSpanEntity>?
   ): CharSequence {
-    val serializableSpannableSubject = TextSpanMapper.fromEntity(
-      gson,
+    val subject = TextSpanMapper.fromEntity(
       chanTextSpanEntityList,
       ChanTextSpanEntity.TextType.Subject
-    ) ?: SerializableSpannableString()
+    ) ?: ParcelableSpannableString()
 
-    return SpannableStringMapper.deserializeSpannableString(
-      gson,
-      serializableSpannableSubject
-    )
+    return ParcelableSpannableStringMapper.fromParcelableSpannableString(subject)
   }
 
   fun mapPostComment(
-    gson: Gson,
     chanTextSpanEntityList: List<ChanTextSpanEntity>?
   ): PostComment {
-    val serializableSpannableComment = TextSpanMapper.fromEntity(
-      gson,
+    val commentParcelableSpannableString = TextSpanMapper.fromEntity(
       chanTextSpanEntityList,
       ChanTextSpanEntity.TextType.PostComment
-    ) ?: SerializableSpannableString()
+    ) ?: ParcelableSpannableString()
 
-    val comment = SpannableStringMapper.deserializeSpannableString(
-      gson,
-      serializableSpannableComment
-    )
+    val comment = ParcelableSpannableStringMapper.fromParcelableSpannableString(commentParcelableSpannableString)
 
     val postLinkables = comment.toSpanned().getSpans(
       0,

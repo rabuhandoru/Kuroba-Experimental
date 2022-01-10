@@ -19,6 +19,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import com.github.k1rakishou.common.DoNotStrip;
+import com.github.k1rakishou.common.KotlinExtensionsKt;
 import com.github.k1rakishou.core_logger.Logger;
 
 import java.io.File;
@@ -37,7 +38,7 @@ public class MPVLib {
 
     // When updating the player code or anything related to it update jin/main.cpp:player_version
     // variable as well as the MPVLib.SUPPORTED_MPV_PLAYER_VERSION
-    public static final int SUPPORTED_MPV_PLAYER_VERSION = 2;
+    public static final int SUPPORTED_MPV_PLAYER_VERSION = 3;
 
     /**
      * Libraries are sorted by the order of dependency.
@@ -81,13 +82,21 @@ public class MPVLib {
                 System.load(libFile.getPath());
             }
 
+            if (playerVersion() != SUPPORTED_MPV_PLAYER_VERSION) {
+                lastError = new MismatchedVersionException(playerVersion(), SUPPORTED_MPV_PLAYER_VERSION);
+                return;
+            }
+
             librariesLoaded = true;
+        } catch (UnsatisfiedLinkError error) {
+            lastError = error;
+            Logger.e(TAG, "loadLibraries() error: " + KotlinExtensionsKt.errorMessageOrClassName(error));
         } catch (LinkageError error) {
             lastError = error;
-            Logger.e(TAG, "loadLibraries() error", error);
+            Logger.e(TAG, "loadLibraries() error: " + KotlinExtensionsKt.errorMessageOrClassName(error));
         } catch (Throwable error) {
             lastError = error;
-            Logger.e(TAG, "loadLibraries() error", error);
+            Logger.e(TAG, "loadLibraries() error: " + KotlinExtensionsKt.errorMessageOrClassName(error));
         }
     }
 
@@ -387,6 +396,16 @@ public class MPVLib {
     }
 
     @DoNotStrip
+    public static class MismatchedVersionException extends Exception {
+
+        public MismatchedVersionException(int playerVersion, int supportedVersion) {
+            super("Mismatched libplayer.so and currently supported versions! libplayer.so version: " +
+                    playerVersion + ", supported version: " + supportedVersion +
+                    ". You need to install the correct libplayer.so version which is: " + supportedVersion);
+        }
+    }
+
+    @DoNotStrip
     public interface EventObserver {
         void eventProperty(@NonNull String property);
 
@@ -429,28 +448,14 @@ public class MPVLib {
         public static final int MPV_EVENT_START_FILE = 6;
         public static final int MPV_EVENT_END_FILE = 7;
         public static final int MPV_EVENT_FILE_LOADED = 8;
-        public static final @Deprecated
-        int MPV_EVENT_TRACKS_CHANGED = 9;
-        public static final @Deprecated
-        int MPV_EVENT_TRACK_SWITCHED = 10;
-        public static final int MPV_EVENT_IDLE = 11;
-        public static final @Deprecated
-        int MPV_EVENT_PAUSE = 12;
-        public static final @Deprecated
-        int MPV_EVENT_UNPAUSE = 13;
-        public static final int MPV_EVENT_TICK = 14;
-        public static final @Deprecated
-        int MPV_EVENT_SCRIPT_INPUT_DISPATCH = 15;
+        public static final @Deprecated int MPV_EVENT_IDLE = 11;
+        public static final @Deprecated int MPV_EVENT_TICK = 14;
         public static final int MPV_EVENT_CLIENT_MESSAGE = 16;
         public static final int MPV_EVENT_VIDEO_RECONFIG = 17;
         public static final int MPV_EVENT_AUDIO_RECONFIG = 18;
-        public static final @Deprecated
-        int MPV_EVENT_METADATA_UPDATE = 19;
         public static final int MPV_EVENT_SEEK = 20;
         public static final int MPV_EVENT_PLAYBACK_RESTART = 21;
         public static final int MPV_EVENT_PROPERTY_CHANGE = 22;
-        public static final @Deprecated
-        int MPV_EVENT_CHAPTER_CHANGE = 23;
         public static final int MPV_EVENT_QUEUE_OVERFLOW = 24;
         public static final int MPV_EVENT_HOOK = 25;
     }

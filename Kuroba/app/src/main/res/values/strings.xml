@@ -147,14 +147,13 @@ Re-enable this permission in the app settings if you permanently disabled it."</
     <string name="action_open_browser">Open in a browser</string>
     <string name="action_catalog_album">Catalog album</string>
     <string name="action_rest_composite_catalog">Load the rest of this composite catalog</string>
-    <string name="action_open_thread_by_id">Open thread by ID</string>
-    <string name="action_open_thread_by_url">Open thread by url</string>
+    <string name="action_open_catalog_or_thread_by_identifier">Open catalog/thread by any identifier</string>
     <string name="action_open_media_by_url">Open media (image/video) by url</string>
     <string name="action_share">Share</string>
     <string name="action_board_archive">View board archive</string>
     <string name="action_open_catalog_page">Open catalog page</string>
     <string name="action_go_to_post">Go to post</string>
-    <string name="action_thread_options">Thread options</string>
+    <string name="action_thread_options">More options</string>
     <string name="action_allow_image_transparency">Allow image transparency</string>
     <string name="action_draw_behind_notch">Draw media content behind phone notch/system UI</string>
     <string name="action_search">Search</string>
@@ -186,6 +185,7 @@ Re-enable this permission in the app settings if you permanently disabled it."</
     <string name="action_mark_cross_thread_quotes_on_scrollbar">Highlight cross-thread replies</string>
     <string name="action_mark_deleted_posts_on_scrollbar">Highlight deleted posts</string>
     <string name="action_mark_hot_posts_on_scrollbar">Highlight \"Hot\" posts</string>
+    <string name="action_catalog_thread_nsfw_mode">Catalog/Thread NSFW mode</string>
     <string name="action_use_scrolling_text_for_thread_title">Use scrolling text for thread title</string>
 
     <string name="action_scroll_to_top">Top</string>
@@ -210,7 +210,7 @@ Re-enable this permission in the app settings if you permanently disabled it."</
     <string name="action_share_media_content">Share media content</string>
 
     <string name="open_link_not_matched">Cannot open this link: \'%1$s\'.</string>
-    <string name="open_link_not_thread_link">Not a thread link: \'%1$s\'.</string>
+    <string name="open_by_board_code_or_thread_no_composite_catalog_error">Cannot be used in a composite catalog</string>
 
     <string name="dev_bookmark_every_thread">Bookmark every thread</string>
     <string name="dev_cache_every_thread">Cache every thread</string>
@@ -247,8 +247,12 @@ Re-enable this permission in the app settings if you permanently disabled it."</
     <string name="image_failed_gif_error">Failed to load gif (reason: %1$s)</string>
     <string name="image_failed_video_error">Failed to load video (reason: %1$s)</string>
     <string name="image_not_found">Image not found</string>
+
+    <string name="media_viewer_loading_bg_audio">Loading external audio…</string>
     <string name="media_viewer_error_loading_bg_audio">Failed to load image bg audio, error=\'%1$s\'</string>
     <string name="media_viewer_error_cannot_load_bg_audio_because_of_settings">Cannot load BG audio (\'%1$s\') because current media load settings do not allow doing that</string>
+    <string name="media_viewer_action_not_supported">This action is not supported in media viewer</string>
+
     <string name="thread_load_failed_ssl">HTTPS error</string>
     <string name="thread_load_failed_ssl_with_reason">HTTPS error (reason: %1$s)</string>
     <string name="thread_load_failed_json_parsing">Error while trying to parse server response.</string>
@@ -605,7 +609,7 @@ Usually that means that you forgot to remove a space from the beginning or the e
     <string name="settings_report_description">Report a problem/crash</string>
     <string name="settings_collect_crash_logs">Collect crash logs</string>
     <string name="settings_collect_crash_logs_description">By enabling this setting, the app will start collecting crash logs. They are NOT uploaded automatically. Crash logs only collect the stacktrace itself, app version and basic OS information. You can review and upload them manually (or delete) by clicking the \"Report\" setting.</string>
-    <string name="settings_collect_anrs">Collect ANR repors</string>
+    <string name="settings_collect_anrs">Collect ANR reports</string>
     <string name="settings_collect_anrs_description">Same as with crashlogs. When enabling this setting ANRs will be collected but not uploaded. ANR means Application Not Responding reports. They will be formed every time the app hangs for more than 2.5 seconds. At that time a thread stack dump will be collected and stored into a file. This may help developers to fix those hangs/freezes/deadlocks so please report them. You can review and upload them manually (or delete) by clicking the \"Report\" setting.</string>
     <string name="settings_find_app_on_github">Find %1$s on GitHub</string>
     <string name="settings_find_app_on_github_bottom">View the source code, give feedback, submit bug reports</string>
@@ -700,8 +704,9 @@ Usually that means that you forgot to remove a space from the beginning or the e
     <string name="settings_reveal_image_spoilers">Auto reveal image spoilers</string>
     <string name="setting_media_viewer_gesture_settings">Media viewer gesture settings</string>
     <string name="setting_media_viewer_offscreen_pages_count">Media viewer offscreen pages count (%1$d)</string>
-    <string name="setting_media_viewer_one_offscreen_page">One offscreen page</string>
-    <string name="setting_media_viewer_two_offscreen_page">Two offscreen pages</string>
+    <string name="setting_media_viewer_auto_swipe">Launch auto page swiper</string>
+    <string name="setting_media_viewer_one_offscreen_page">One offscreen page (3 pages total)</string>
+    <string name="setting_media_viewer_two_offscreen_page">Two offscreen pages (5 pages total, may become laggy on some devices)</string>
     <string name="setting_images_high_res">High resolution cells</string>
     <string name="setting_images_high_res_description">Make the album view and card catalog images higher resolution by pre-rescaling full size images (⚠ May become the reason of freezes while scrolling catalog/thread/album on old devices ⚠)</string>
 
@@ -715,6 +720,9 @@ Usually that means that you forgot to remove a space from the beginning or the e
     <string name="setting_post_default_name">Default post name</string>
     <string name="setting_auto_refresh_thread">Auto refresh threads</string>
     <string name="setting_controller_swipeable">Allow screens to be swiped away</string>
+    <string name="setting_controller_swipeable_description">Works on screens like board archive/album/etc. Does not work on the thread screen! Use the other setting for the thread screen.</string>
+    <string name="setting_view_thread_controller_swipeable">Allow the thread screen to be swiped away</string>
+    <string name="setting_view_thread_controller_swipeable_description">When disabled you will be able to open the drawer by doing the drag to right gesture from any point of the screen (while in a thread) similar to how you can open the drawer when in catalog. Only works in PHONE/SLIDE layout mode.</string>
     <string name="setting_controller_reply_layout_gestures">Allow Reply Layout gesture control</string>
     <string name="setting_controller_reply_layout_gestures_description">This setting enables the following gestures: \n1. Longtap bottom navigation view + swipe up to open Reply Layout. \n2. Swipe up Reply Layout to expand it. \n3. Swipe down expanded Reply Layout to collapse it or if it is already collapsed to close it. \n\nBasically allows you to control Reply Layout with only gestures (You can even hide the reply button completely). Some gestures (Longtap + swipe up) do not work with SPLIT layout.</string>
     <string name="setting_open_link_confirmation">Ask before opening links</string>
@@ -728,7 +736,8 @@ Usually that means that you forgot to remove a space from the beginning or the e
     <!-- Behavior post group -->
     <string name="settings_group_post">Post</string>
     <string name="setting_volume_key_scrolling">Volume keys scroll content</string>
-    <string name="setting_tap_no_reply">Tap the post number to reply</string>
+    <string name="setting_tappable_post_title">Tappable post title</string>
+    <string name="setting_tappable_post_title_description">When enabled allows tapping post number (to reply) as well as tapping poster id/name/tripcode (to display posts by that id/name/tripcode)</string>
     <string name="setting_post_links_take_whole_horiz_space">Make post links take whole available horizontal space</string>
     <string name="setting_post_links_take_whole_horiz_space_descriptor">When enabled makes clicking any kind of post link (including post replies) easier by extending it\'s area to take the whole available horizontal space. Disabling this setting will stop triggering link clicks when clicking seemingly empty post comment space.</string>
     <string name="setting_mark_unseen_posts_title">Mark unseen posts</string>
@@ -819,7 +828,6 @@ Usually that means that you forgot to remove a space from the beginning or the e
 
     <!-- Database summary settings -->
     <string name="settings_database_summary">Database summary</string>
-    <string name="settings_clear_inlined_files_table">Clear inlined files info table</string>
     <string name="settings_clear_link_info_table">Clear external link extra info table</string>
     <string name="settings_clear_seen_posts_table">Clear seen posts table</string>
     <string name="settings_trigger_thread_cleanup">Trigger thread cleanup</string>
@@ -842,15 +850,16 @@ Usually that means that you forgot to remove a space from the beginning or the e
     <string name="settings_enable_verbose_logs">Enable verbose logs</string>
     <string name="settings_disable_verbose_logs">Disable verbose logs</string>
     <string name="settings_crash_app">Crash the app</string>
-    <string name="settings_clear_file_cache">Clear media/exoplayer caches</string>
-    <string name="settings_clear_file_cache_bottom_description">Currently: internal cache %1$d MB, exoplayer cache: %2$d MB</string>
+    <string name="settings_clear_file_cache">Clear \'%1$s\' disk cache</string>
+    <string name="settings_clear_file_cache_bottom_description">%1$s cache: %2$s / %3$s</string>
+    <string name="settings_clear_exo_player_file_cache">Clear exoplayer cache</string>
+    <string name="settings_clear_exo_player_cache_bottom_description">Exoplayer cache: %1$s</string>
     <string name="settings_clear_thread_downloader_disk_cache">Clear thread downloader disk cache</string>
     <string name="settings_thread_downloader_clear_disk_cache_clear">Clear cache</string>
     <string name="settings_thread_downloader_clear_disk_cache_do_not_clear">Do not</string>
     <string name="settings_thread_downloader_clear_disk_cache_title">Clear thread downloader disk cache?</string>
     <string name="settings_thread_downloader_clear_disk_cache_description">This action will delete all downloaded media for all downloading/downloaded threads. Are you sure you want to do that?</string>
-    <string name="settings_thread_download_cache_bottom_description">Currently: %1$d MB</string>
-    <string name="settings_dump_thread_stack">Dump active thread stack traces to log</string>
+    <string name="settings_thread_download_cache_bottom_description">Currently: %1$s</string>
     <string name="settings_reset_thread_open_counter">Reset thread open counter</string>
     <string name="settings_crash_on_safe_throw_enabled">Crash on safe throw (ENABLED)</string>
     <string name="settings_crash_on_safe_throw_disabled">Crash on safe throw (DISABLED)</string>
@@ -860,8 +869,11 @@ Usually that means that you forgot to remove a space from the beginning or the e
     <string name="settings_simulate_app_not_updated_bottom">Makes the app think it\'s NOT updated to the latest version. This will be reset the next time you manually check for updates</string>
     <string name="settings_auto_theme_switcher">Auto theme switcher</string>
     <string name="settings_auto_theme_switcher_bottom">Toggles light/dark theme with a slight delay (5 seconds) ad infinitum (Or until app restart). Is used for dynamic themes testing. \n\nCurrent status: %1$s</string>
+    <string name="settings_fun_things_are_fun">Fun things are fun</string>
     <string name="settings_force_4chan_birthday">Force 4chan birthday</string>
     <string name="settings_force_halloween">Force halloween</string>
+    <string name="settings_force_christmas">Force Christmas</string>
+    <string name="settings_force_new_year">Force New Year</string>
 
     <!-- Security settings -->
     <string name="settings_screen_security">Security</string>
@@ -992,7 +1004,6 @@ If you ever log out or if the passcode expires you will have to change reply mod
     <string name="controller_boards_setup_no_boards">No boards added</string>
     <string name="controller_boards_setup_title">Configure boards of %1$s</string>
     <string name="controller_boards_setup_boards_updated">Boards updated</string>
-    <string name="controller_boards_setup_enter_board_code">Enter board code (just text, without \'/\')</string>
     <string name="controller_boards_setup_board_code_is_empty">Board code is empty</string>
     <string name="controller_boards_setup_sort_boards_alphabetically">Sort boards alphabetically</string>
     <string name="controller_boards_setup_delete_all_boards">Delete all added boards</string>
@@ -1049,8 +1060,13 @@ If you ever log out or if the passcode expires you will have to change reply mod
 
     <string name="browse_controller_title_app_setup">App Setup</string>
     <string name="browse_controller_subtitle">Tap for site/board setup</string>
-    <string name="browse_controller_enter_thread_id">Enter thread id (the OP number, e.g. 123456789)</string>
-    <string name="browse_controller_enter_thread_url">Enter thread url</string>
+    <string name="browse_controller_enter_identifier">Enter catalog/thread identifier</string>
+    <string name="browse_controller_enter_identifier_description">
+        - \'board_code\' or \'/board_code/\' to open board of the currently opened site\n
+        - \'1234567890\' to open thread with id \'1234567890\' of the currently opened board\n
+        - \'4chan.org/a/\' to open \'/a/\' board of \'4chan.org\' site\n
+        - Full links like \'https://boards.4channel.org/g/thread/1234567890#p1122334455\' or \'4channel.org/g/\' work too
+    </string>
     <string name="browse_controller_enter_media_url">Enter media url</string>
     <string name="browse_controller_enter_media_url_error">Failed to convert \'%1$s\' to url</string>
     <string name="browse_controller_enter_thread_id_msg">The thread must belong to a board you are currently on, otherwise it won\'t be found</string>
@@ -1093,6 +1109,7 @@ If you ever log out or if the passcode expires you will have to change reply mod
     <string name="captcha_layout_reload_captcha">Reload captcha to apply the setting</string>
     <string name="captcha_layout_contrast_bg_slider_captcha">Use contrast background for slider captcha</string>
     <string name="captcha_layout_remember_captcha_cookies">Remember captcha cookies for easy captcha</string>
+    <string name="captcha_layout_slider_captcha_alternative_ui">Split slider captcha into a grid of images</string>
     <string name="captcha_layout_show_captcha_help">Show captcha help</string>
     <string name="captcha_layout_help_title">Captcha help</string>
     <string name="captcha_layout_captcha_already_expired">The captcha has already expired</string>
@@ -1125,15 +1142,20 @@ If you ever log out or if the passcode expires you will have to change reply mod
     <string name="drawer_controller_show_in_bookmarks">Show in bookmarks</string>
     <string name="drawer_controller_pin_unpin_selected">Pin/unpin selected</string>
     <string name="drawer_controller_move_last_accessed_thread_to_top">Move last accessed thread/catalog to top</string>
-    <string name="drawer_controller_show_bookmarks">Show bookmarked threads</string>
-    <string name="drawer_controller_show_navigation_history">Show navigation history</string>
-    <string name="drawer_controller_delete_shortcut">Show delete navigation history shortcut</string>
+    <string name="drawer_controller_show_bookmarks">Display bookmarked threads</string>
+    <string name="drawer_controller_show_navigation_history">Track and display navigation history</string>
+    <string name="drawer_controller_delete_shortcut">Show delete navigation history button</string>
+    <string name="drawer_controller_delete_bookmark_on_history_delete">Delete bookmark(s) when navigation history deleted</string>
+    <string name="drawer_controller_delete_nav_history_on_bookmark_delete">Delete navigation history when bookmark(s) deleted</string>
     <string name="drawer_controller_clear_nav_history">Clear navigation history</string>
     <string name="drawer_controller_clear_nav_history_dialog_title">Clear navigation history?</string>
-    <string name="drawer_controller_navigation_entry_pinned">Pinned</string>
-    <string name="drawer_controller_navigation_entry_unpinned">Unpinned</string>
+    <string name="drawer_controller_navigation_entry_pinned_one">Pinned \'%1$s\'</string>
+    <string name="drawer_controller_navigation_entry_pinned_many">Pinned %1$d items</string>
+    <string name="drawer_controller_navigation_entry_unpinned_one">Unpinned \'%1$s\'</string>
+    <string name="drawer_controller_navigation_entry_unpinned_many">Unpinned %1$d  items</string>
+    <string name="drawer_controller_navigation_entry_deleted_one">Deleted \'%1$s\'</string>
+    <string name="drawer_controller_navigation_entry_deleted_many">Deleted %1$d items</string>
     <string name="drawer_controller_navigation_entry_failed_to_pin_unpin">Failed to pin or unpin</string>
-    <string name="drawer_controller_navigation_entry_deleted">Deleted</string>
     <string name="drawer_controller_grid_mode">Grid mode</string>
 
     <string name="board_selection_controller_grid_layout_mode">Grid mode</string>
@@ -1459,6 +1481,21 @@ Actual error: \'%1$s\'</string>
     <string name="lynxchan_captcha_verification_not_successful">Captcha verification was not successful</string>
     <string name="lynxchan_captcha_verification_block_bypassed">Block bypassed, now solve the regular captcha</string>
 
+    <string name="report_controller_report_post">Report post</string>
+    <string name="report_controller_select_report_category">Select report category</string>
+    <string name="report_controller_open_in_webview">Open in WebView</string>
+    <string name="post_report_not_supported">Not supported</string>
+    <string name="post_reported">Reported post \'%1$s\'</string>
+
+    <string name="select_board_for_search_controller_no_boards_found">No boards supporting search found for site \'%1$s\'</string>
+    <string name="select_board_for_search_controller_no_boards_found_with_query">No boards supporting search found for site \'%1$s\' with query \'%2$s\'</string>
+
+    <string name="dvach_report_post_title">Report post \'%1$s\'</string>
+    <string name="dvach_report_post_description">Enter report reason</string>
+    <string name="dvach_report_post_reason_cannot_be_empty">Report reason cannot be empty</string>
+    <string name="dvach_report_post_sending">Sending report…</string>
+    <string name="dvach_report_post_error">Error: \'%1$s\'</string>
+
     <string name="not_allowed_during_halloween">You are not allowed to do this</string>
     <string name="setting_show_prefetch_loading_indicator_title">Show loading indicator for prefetching images</string>
     <string name="epoxy_no_settings_found_by_query">No settings were found by query \"%1$s\"</string>
@@ -1487,5 +1524,6 @@ Actual error: \'%1$s\'</string>
     <string name="catalog_end_reached">Catalog end reached</string>
     <string name="archives_end_reached">End reached</string>
     <string name="failed_post_find_post_to_scroll_to">Failed to find post to scroll to (postNo=\'%1$d\')</string>
+    <string name="ssl_error">SSL error</string>
 
 </resources>

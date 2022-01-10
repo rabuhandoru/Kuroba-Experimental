@@ -32,11 +32,7 @@ import android.util.AttributeSet
 import android.view.*
 import android.widget.TextView
 import androidx.appcompat.widget.AppCompatImageView
-import androidx.constraintlayout.widget.Barrier
-import androidx.constraintlayout.widget.ConstraintLayout
-import androidx.constraintlayout.widget.ConstraintSet
 import androidx.core.view.GravityCompat
-import androidx.core.view.updateLayoutParams
 import androidx.core.widget.TextViewCompat
 import com.github.k1rakishou.ChanSettings
 import com.github.k1rakishou.chan.R
@@ -50,7 +46,6 @@ import com.github.k1rakishou.chan.ui.animation.PostUnseenIndicatorFadeAnimator.c
 import com.github.k1rakishou.chan.ui.cell.PostCellInterface.PostCellCallback
 import com.github.k1rakishou.chan.ui.cell.post_thumbnail.PostImageThumbnailViewsContainer
 import com.github.k1rakishou.chan.ui.view.DashedLineView
-import com.github.k1rakishou.chan.ui.view.FastScrollerHelper
 import com.github.k1rakishou.chan.ui.view.PostCommentTextView
 import com.github.k1rakishou.chan.ui.view.ThumbnailView
 import com.github.k1rakishou.chan.ui.view.floating_menu.FloatingListMenuItem
@@ -58,13 +53,10 @@ import com.github.k1rakishou.chan.utils.*
 import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.*
 import com.github.k1rakishou.chan.utils.ViewUtils.setEditTextCursorColor
 import com.github.k1rakishou.chan.utils.ViewUtils.setHandlesColors
-import com.github.k1rakishou.common.TextBounds
-import com.github.k1rakishou.common.countLines
-import com.github.k1rakishou.common.getTextBounds
+import com.github.k1rakishou.common.buildSpannableString
 import com.github.k1rakishou.common.modifyCurrentAlpha
 import com.github.k1rakishou.common.selectionEndSafe
 import com.github.k1rakishou.common.selectionStartSafe
-import com.github.k1rakishou.common.updatePaddings
 import com.github.k1rakishou.core_logger.Logger
 import com.github.k1rakishou.core_spannable.*
 import com.github.k1rakishou.core_themes.ChanTheme
@@ -75,15 +67,21 @@ import com.github.k1rakishou.model.data.post.ChanPostImage
 import com.github.k1rakishou.model.util.ChanPostUtils
 import dagger.Lazy
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.joda.time.DateTime
+import java.lang.ref.WeakReference
 import java.util.*
 import javax.inject.Inject
 
-class PostCell : ConstraintLayout,
+class PostCell @JvmOverloads constructor(
+  context: Context,
+  attrs: AttributeSet? = null,
+  defStyleAttr: Int = 0
+) : PostCellLayout(context, attrs, defStyleAttr),
   PostCellInterface,
   ThemeEngine.ThemeChangesListener,
   PostImageThumbnailViewsContainer.PostCellThumbnailCallbacks {
@@ -107,19 +105,16 @@ class PostCell : ConstraintLayout,
   private lateinit var postAttentionLabel: DashedLineView
 
   private var imageFileName: TextView? = null
-  private var titleIconsThumbnailBarrier: Barrier? = null
   private var postCellData: PostCellData? = null
   private var postCellCallback: PostCellCallback? = null
   private var needAllowParentToInterceptTouchEvents = false
   private var needAllowParentToInterceptTouchEventsDownEventEnded = false
-  private var iconSizePx = 0
   private var postCellHighlight: PostHighlightManager.PostHighlight? = null
   private var postTimeUpdaterJob: Job? = null
-  private var postCommentShiftResultCached: PostCommentShiftResult? = null
   private var blinkExecuted = false
 
-  private val linkClickSpan: ColorizableBackgroundColorSpan
-  private val quoteClickSpan: ColorizableBackgroundColorSpan
+  private val linkClickSpan: BackgroundColorIdSpan
+  private val quoteClickSpan: BackgroundColorIdSpan
   private val spoilerClickSpan: BackgroundColorSpan
 
   private val scope = KurobaCoroutineScope()
@@ -143,15 +138,17 @@ class PostCell : ConstraintLayout,
     private var processed = false
 
     override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
-      val threadPreviewMode = postCellData?.threadPreviewMode
-        ?: return false
+      val pcd = postCellData ?: return false
 
-      if (!threadPreviewMode) {
+      if (!pcd.threadPreviewMode && !pcd.isMediaViewerPostsPopup) {
         quoteMenuItem = menu.add(Menu.NONE, R.id.post_selection_action_quote, 0, R.string.post_quote)
       }
 
-      filterItem = menu.add(Menu.NONE, R.id.post_selection_action_filter, 1, R.string.post_filter)
-      webSearchItem = menu.add(Menu.NONE, R.id.post_selection_action_search, 2, R.string.post_web_search)
+      if (!pcd.isMediaViewerPostsPopup) {
+        filterItem = menu.add(Menu.NONE, R.id.post_selection_action_filter, 1, R.string.post_filter)
+      }
+
+      webSearchItem = menu.add(Menu.NONE, R.id.post_selection_action_web_search, 2, R.string.post_web_search)
       return true
     }
 
@@ -204,28 +201,29 @@ class PostCell : ConstraintLayout,
     }
   }
 
-  constructor(context: Context) : super(context)
-
-  constructor(context: Context, attrs: AttributeSet?) : super(context, attrs)
-
-  constructor(context: Context, attrs: AttributeSet?, defStyleAttr: Int) : super(context, attrs, defStyleAttr)
-
   init {
     extractActivityComponent(context)
       .inject(this)
 
-    linkClickSpan = ColorizableBackgroundColorSpan(ChanThemeColorId.PostLinkColor, 1.3f)
-    quoteClickSpan = ColorizableBackgroundColorSpan(ChanThemeColorId.PostQuoteColor, 1.3f)
+    linkClickSpan = BackgroundColorIdSpan(ChanThemeColorId.PostLinkColor, 1.3f)
+    quoteClickSpan = BackgroundColorIdSpan(ChanThemeColorId.PostQuoteColor, 1.3f)
     spoilerClickSpan = BackgroundColorSpan(themeEngine.chanTheme.postSpoilerColor)
   }
 
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
+
+    startPostTitleTimeUpdateJob()
+
     themeEngine.addListener(this)
   }
 
   override fun onDetachedFromWindow() {
     super.onDetachedFromWindow()
+
+    postTimeUpdaterJob?.cancel()
+    postTimeUpdaterJob = null
+
     themeEngine.removeListener(this)
   }
 
@@ -233,8 +231,6 @@ class PostCell : ConstraintLayout,
     if (postCellData != null) {
       unbindPost(postCellData, isActuallyRecycling)
     }
-
-    postCommentShiftResultCached = null
   }
 
   override fun onThemeChanged() {
@@ -304,6 +300,10 @@ class PostCell : ConstraintLayout,
             return@collect
           }
 
+          if (blinkExecuted && postHighlight.isBlinking()) {
+            blinkExecuted = false
+          }
+
           postCellHighlight = postHighlight.fullCopy()
           bindBackgroundColor(themeEngine.chanTheme)
         }
@@ -323,6 +323,20 @@ class PostCell : ConstraintLayout,
     }
 
     bindPost(postCellData)
+
+    measureAndLayoutPostCell(
+      postCellData = postCellData,
+      postImageThumbnailViewsContainer = postImageThumbnailViewsContainer,
+      title = title,
+      icons = icons,
+      comment = comment,
+      replies = replies,
+      goToPostButton = goToPostButton,
+      divider = divider,
+      postAttentionLabel = postAttentionLabel,
+      imageFileName = imageFileName
+    )
+
     onThemeChanged()
   }
 
@@ -331,6 +345,7 @@ class PostCell : ConstraintLayout,
     icons.cancelRequests()
     scope.cancelChildren()
 
+    super.clear()
     postImageThumbnailViewsContainer.unbindContainer()
 
     if (postCellData != null) {
@@ -381,7 +396,6 @@ class PostCell : ConstraintLayout,
     }
 
     postImageThumbnailViewsContainer = findViewById(R.id.thumbnails_container)
-    titleIconsThumbnailBarrier = findViewById(R.id.title_icons_thumbnail_barrier)
 
     val textSizeSp = postCellData.textSizeSp
 
@@ -397,7 +411,6 @@ class PostCell : ConstraintLayout,
     title.textSize = textSizeSp.toFloat()
     title.gravity = GravityCompat.START
 
-    iconSizePx = sp(textSizeSp - 3.toFloat())
     icons.setSpacing(iconsSpacing)
     icons.height = sp(textSizeSp.toFloat())
     icons.rtl(false)
@@ -407,149 +420,11 @@ class PostCell : ConstraintLayout,
 
     updatePostCellFileName(postCellData)
 
-    if (postCellData.isViewingThread) {
-      replies.updateLayoutParams<ConstraintLayout.LayoutParams> {
-        width = 0
-        horizontalWeight = 1f
-      }
-    } else {
-      replies.updateLayoutParams<ConstraintLayout.LayoutParams> {
-        width = ConstraintLayout.LayoutParams.WRAP_CONTENT
-      }
-    }
-
-    title.updatePaddings(left = horizPaddingPx, top = vertPaddingPx, right = horizPaddingPx, bottom = 0)
-    icons.updatePaddings(left = horizPaddingPx, top = vertPaddingPx, right = horizPaddingPx, bottom = 0)
-    comment.updatePaddings(left = horizPaddingPx, top = commentVertPaddingPx, right = horizPaddingPx, bottom = commentVertPaddingPx)
-
-    if (imageFileName != null && imageFileName!!.visibility == View.VISIBLE) {
-      imageFileName!!.updatePaddings(left = horizPaddingPx, top = 0, right = horizPaddingPx, bottom = 0)
-    }
-
-    // replies view always has horizPaddingPx padding since we never shift it.
-    replies.updatePaddings(left = horizPaddingPx, top = 0, right = horizPaddingPx, bottom = vertPaddingPx)
-
     postCommentLongtapDetector.postCellContainer = this
     postCommentLongtapDetector.commentView = comment
-    postImageThumbnailViewsContainer.preBind(this, postCellData, horizPaddingPx, vertPaddingPx)
-
-    val dividerParams = divider.layoutParams as MarginLayoutParams
-    dividerParams.leftMargin = horizPaddingPx
-    dividerParams.rightMargin = horizPaddingPx
-    divider.layoutParams = dividerParams
+    postImageThumbnailViewsContainer.preBind(this, postCellData)
 
     updatePostCellListeners(postCellData)
-  }
-
-  @Suppress("UnnecessaryVariable")
-  private fun canShiftPostComment(postCellData: PostCellData): PostCommentShiftResult {
-    if (postCommentShiftResultCached != null) {
-      return postCommentShiftResultCached!!
-    }
-
-    if (!postCellData.shiftPostComment || !postCellData.singleImageMode) {
-      return PostCommentShiftResult.CannotShiftComment
-    }
-
-    val firstImage = postCellData.firstImage
-      ?: return PostCommentShiftResult.CannotShiftComment
-
-    val postFileInfo = postCellData.postFileInfoMap[firstImage]
-      ?: return PostCommentShiftResult.CannotShiftComment
-
-    if (postCellData.forceShiftPostComment) {
-      return PostCommentShiftResult.ShiftAndAttachToTheSideOfThumbnail
-    }
-
-    if (postCellData.commentText.length < SUPER_SHORT_COMMENT_LENGTH && postCellData.commentText.countLines() <= 1) {
-      // Fast path for very short comments.
-      return PostCommentShiftResult.ShiftAndAttachToTheSideOfThumbnail
-    }
-
-    val goToPostButtonWidth = if (postCellData.postViewMode.canShowGoToPostButton()) {
-      getDimen(R.dimen.go_to_post_button_width)
-    } else {
-      0
-    }
-
-    val thumbnailWidth = PostImageThumbnailViewsContainer.calculatePostCellSingleThumbnailSize()
-    // We allow using comment shift if comment height + post title height + imageFileName height
-    // (if present) is less than 2x of thumbnail height
-    val multipliedThumbnailHeight = thumbnailWidth * 2
-
-    val fastScrollerWidth = if (ChanSettings.draggableScrollbars.get().isEnabled) {
-      FastScrollerHelper.FAST_SCROLLER_WIDTH
-    } else {
-      0
-    }
-
-    var totalAvailableWidth = postCellData.postCellDataWidthNoPaddings
-    totalAvailableWidth -= getDimen(R.dimen.post_attention_label_width)
-    totalAvailableWidth -= (horizPaddingPx * 2)
-    totalAvailableWidth -= fastScrollerWidth
-
-    if (totalAvailableWidth <= 0) {
-      return PostCommentShiftResult.CannotShiftComment
-    }
-
-    val titleTextBounds = title.getTextBounds(
-      postCellData.postTitle,
-      (totalAvailableWidth - goToPostButtonWidth - thumbnailWidth)
-    )
-
-    val imageFileNameTextBounds = if (imageFileName != null && imageFileName!!.visibility == View.VISIBLE) {
-      imageFileName!!.getTextBounds(
-        postFileInfo,
-        (totalAvailableWidth - goToPostButtonWidth - thumbnailWidth)
-      )
-    } else {
-      TextBounds.EMPTY
-    }
-
-    val resultTitleTextBounds = titleTextBounds.mergeWith(imageFileNameTextBounds)
-    val commentTextBounds = comment.getTextBounds(postCellData.commentText, totalAvailableWidth)
-    val commentHeight = commentTextBounds.textHeight
-
-    if ((multipliedThumbnailHeight - resultTitleTextBounds.textHeight) > commentHeight) {
-      return PostCommentShiftResult.ShiftAndAttachToTheSideOfThumbnail
-    }
-
-    val iconsHeight = if (icons.hasIcons) {
-      icons.iconsHeight + icons.paddingTop + icons.paddingBottom
-    } else {
-      0
-    }
-
-    val availableHeight = thumbnailWidth - resultTitleTextBounds.textHeight - iconsHeight
-    val availableWidthWithoutThumbnail = totalAvailableWidth - thumbnailWidth - goToPostButtonWidth
-
-    if (availableHeight > 0 && postCellData.postAlignmentMode == ChanSettings.PostAlignmentMode.AlignLeft) {
-      // Special case for when thumbnails are on the right side of a post and the post comment's
-      // lines are all formatted in such way that first N of them are all less than availableWidth.
-      // N in this case is first number lines which height sum is greater than or equal to availableHeight.
-      // This is very useful for tablets with postAlignmentMode == AlignLeft.
-
-      var textOffset = 0
-
-      for (lineBound in commentTextBounds.lineBounds) {
-        val lineHeight = lineBound.height()
-        val lineWidth = lineBound.width()
-
-        if (lineWidth > availableWidthWithoutThumbnail) {
-          break
-        }
-
-        textOffset += lineHeight.toInt()
-
-        if (textOffset >= availableHeight) {
-          break
-        }
-      }
-
-      return PostCommentShiftResult.ShiftWithTopMargin(textOffset.coerceIn(0, availableHeight))
-    }
-
-    return PostCommentShiftResult.CannotShiftComment
   }
 
   private fun updatePostCellListeners(postCellData: PostCellData) {
@@ -566,14 +441,12 @@ class PostCell : ConstraintLayout,
 
     replies.setOnThrottlingClickListener {
       if (replies.visibility == VISIBLE) {
-        val post = postCellData.post
-
         if (postCellData.isViewingThread) {
-          if (post.repliesFromCount > 0) {
-            postCellCallback?.onShowPostReplies(post)
+          if (postCellData.repliesFromCount > 0) {
+            postCellCallback?.onShowPostReplies(postCellData.post)
           }
         } else {
-          postCellCallback?.onPreviewThreadPostsClicked(post)
+          postCellCallback?.onPreviewThreadPostsClicked(postCellData.post)
         }
       }
     }
@@ -589,136 +462,49 @@ class PostCell : ConstraintLayout,
     }
 
     this.setOnThrottlingClickListener(POST_CELL_ROOT_CLICK_TOKEN) {
-      postCellCallback?.onPostClicked(postCellData.post.postDescriptor)
+      postCellCallback?.onPostClicked(postCellData.postDescriptor)
     }
   }
 
   private fun updatePostCellFileName(postCellData: PostCellData) {
     val imgFilename = imageFileName
-      ?: return
+    if (imgFilename == null) {
+      return
+    }
 
-    if (!postCellData.showImageFileNameForSingleImage) {
+    if (!postCellData.showImageFileName) {
       imgFilename.setVisibilityFast(GONE)
       return
     }
 
-    val image = postCellData.firstImage
-    if (image == null) {
+    val postImages = postCellData.postImages
+    if (postImages.isEmpty()) {
       imgFilename.setVisibilityFast(GONE)
       return
     }
 
-    val postFileInfo = postCellData.postFileInfoMap[image]
-    if (postFileInfo == null) {
+    val postFileInfoFull = buildSpannableString {
+      for ((index, postImage) in postImages.withIndex()) {
+        val postFileInfo = postCellData.postFileInfoMap[postImage]
+        if (postFileInfo == null) {
+          continue
+        }
+
+        if (index > 0) {
+          appendLine()
+        }
+
+        append(postFileInfo)
+      }
+    }
+
+    if (postFileInfoFull.isBlank()) {
       imgFilename.setVisibilityFast(GONE)
       return
     }
 
     imgFilename.setVisibilityFast(VISIBLE)
-    imgFilename.setText(postFileInfo, TextView.BufferType.SPANNABLE)
-    imgFilename.gravity = GravityCompat.START
-  }
-
-  private fun updatePostCellLayoutRuntime(
-    postCellData: PostCellData,
-    postCommentShiftResult: PostCommentShiftResult
-  ) {
-    if (postCommentShiftResultCached != null) {
-      return
-    }
-
-    val constraintSet = ConstraintSet()
-    constraintSet.clone(this)
-
-    when (postCommentShiftResult) {
-      is PostCommentShiftResult.ShiftWithTopMargin -> {
-        constraintSet.createBarrier(
-          R.id.title_icons_thumbnail_barrier,
-          Barrier.BOTTOM,
-          0,
-          R.id.thumbnails_container,
-          R.id.title,
-          R.id.image_filename,
-          R.id.icons
-        )
-
-        when (postCellData.postAlignmentMode) {
-          ChanSettings.PostAlignmentMode.AlignLeft -> {
-            constraintSet.clear(R.id.comment, ConstraintSet.END)
-            constraintSet.connect(R.id.comment, ConstraintSet.END, R.id.go_to_post_button, ConstraintSet.START)
-          }
-          ChanSettings.PostAlignmentMode.AlignRight -> {
-            constraintSet.clear(R.id.comment, ConstraintSet.START)
-            constraintSet.connect(R.id.comment, ConstraintSet.START, R.id.post_attention_label, ConstraintSet.END)
-          }
-        }
-
-        if (postCommentShiftResult.topOffset > 0) {
-          constraintSet.setMargin(R.id.comment, ConstraintSet.TOP, -postCommentShiftResult.topOffset)
-        } else {
-          constraintSet.setMargin(R.id.comment, ConstraintSet.TOP, 0)
-        }
-      }
-      PostCommentShiftResult.ShiftAndAttachToTheSideOfThumbnail -> {
-        constraintSet.createBarrier(
-          R.id.title_icons_thumbnail_barrier,
-          Barrier.BOTTOM,
-          0,
-          R.id.title,
-          R.id.image_filename,
-          R.id.icons
-        )
-
-        when (postCellData.postAlignmentMode) {
-          ChanSettings.PostAlignmentMode.AlignLeft -> {
-            constraintSet.clear(R.id.comment, ConstraintSet.END)
-            constraintSet.connect(R.id.comment, ConstraintSet.END, R.id.thumbnails_container, ConstraintSet.START)
-          }
-          ChanSettings.PostAlignmentMode.AlignRight -> {
-            constraintSet.clear(R.id.comment, ConstraintSet.START)
-            constraintSet.connect(R.id.comment, ConstraintSet.START, R.id.thumbnails_container, ConstraintSet.END)
-          }
-        }
-
-        constraintSet.setMargin(R.id.comment, ConstraintSet.TOP, 0)
-
-        constraintSet.createHorizontalChain(
-          ConstraintSet.PARENT_ID,
-          ConstraintSet.RIGHT,
-          ConstraintSet.PARENT_ID,
-          ConstraintSet.LEFT,
-          intArrayOf(R.id.thumbnails_container, R.id.comment),
-          floatArrayOf(0f, 1f),
-          ConstraintSet.CHAIN_SPREAD
-        )
-      }
-      PostCommentShiftResult.CannotShiftComment -> {
-        constraintSet.createBarrier(
-          R.id.title_icons_thumbnail_barrier,
-          Barrier.BOTTOM,
-          0,
-          R.id.thumbnails_container,
-          R.id.title,
-          R.id.image_filename,
-          R.id.icons
-        )
-
-        when (postCellData.postAlignmentMode) {
-          ChanSettings.PostAlignmentMode.AlignLeft -> {
-            constraintSet.clear(R.id.comment, ConstraintSet.END)
-            constraintSet.connect(R.id.comment, ConstraintSet.END, R.id.go_to_post_button, ConstraintSet.START)
-          }
-          ChanSettings.PostAlignmentMode.AlignRight -> {
-            constraintSet.clear(R.id.comment, ConstraintSet.START)
-            constraintSet.connect(R.id.comment, ConstraintSet.START, R.id.post_attention_label, ConstraintSet.END)
-          }
-        }
-
-        constraintSet.setMargin(R.id.comment, ConstraintSet.TOP, 0)
-      }
-    }
-
-    constraintSet.applyTo(this)
+    imgFilename.setText(postFileInfoFull, TextView.BufferType.SPANNABLE)
   }
 
   override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
@@ -768,14 +554,6 @@ class PostCell : ConstraintLayout,
     this.isLongClickable = true
     val seenPostFadeOutAnimRemainingTimeMs = getSeenPostFadeOutAnimRemainingTime(postCellData)
 
-    if (postCellData.isSelectionMode) {
-      setPostLinkableListener(postCellData, false)
-      replies.isClickable = false
-    } else {
-      setPostLinkableListener(postCellData, true)
-      replies.isClickable = true
-    }
-
     startPostTitleTimeUpdateJob()
     bindBackgroundResources(postCellData)
     bindPostAttentionLabel(postCellData, seenPostFadeOutAnimRemainingTimeMs)
@@ -783,23 +561,9 @@ class PostCell : ConstraintLayout,
     bindPostTitle(postCellData)
     bindPostComment(postCellData)
     bindPostContent(postCellData)
-
-    val canBindReplies = (postCellData.isViewingCatalog && postCellData.catalogRepliesCount > 0)
-      || postCellData.repliesFromCount > 0
-
-    if (!postCellData.isSelectionMode && canBindReplies) {
-      replies.setVisibilityFast(View.VISIBLE)
-      replies.text = postCellData.catalogRepliesText
-    } else {
-      replies.setVisibilityFast(View.GONE)
-    }
-
+    bindPostReplies(postCellData)
     bindGoToPostButton(postCellData)
     bindIcons(postCellData)
-
-    val postCommentShiftResult = canShiftPostComment(postCellData)
-    updatePostCellLayoutRuntime(postCellData, postCommentShiftResult)
-    this.postCommentShiftResultCached = postCommentShiftResult
 
     val dividerVisibility = if (postCellData.showDivider) {
       View.VISIBLE
@@ -819,33 +583,37 @@ class PostCell : ConstraintLayout,
     postTimeUpdaterJob?.cancel()
     postTimeUpdaterJob = null
 
+    if (postCellData == null) {
+      return
+    }
+
+    val postCellDataWeak = WeakReference(postCellData)
+    val postCellWeak = WeakReference(this)
+
     postTimeUpdaterJob = scope.launch {
-      while (isActive) {
-        if (postCellData == null) {
-          delay(1_000L)
-          continue
-        }
+      coroutineScope {
+        while (isActive && isAttachedToWindow) {
+          if (postCellDataWeak.get() == null || postCellDataWeak.get()?.postFullDate == true) {
+            break
+          }
 
-        if (postCellData?.postFullDate == true) {
-          break
-        }
+          val timeDelta = System.currentTimeMillis() - ((postCellDataWeak.get()?.timestamp ?: 0) * 1000L)
+          val nextDelayMs = if (timeDelta <= 60_000L) {
+            5_000L
+          } else {
+            60_000L
+          }
 
-        val timeDelta = System.currentTimeMillis() - ((postCellData?.post?.timestamp ?: 0L) * 1000L)
-        val nextDelayMs = if (timeDelta <= 60_000L) {
-          5_000L
-        } else {
-          60_000L
-        }
+          delay(nextDelayMs)
 
-        delay(nextDelayMs)
+          if (!isActive || postCellWeak.get() == null || postCellDataWeak.get() == null) {
+            break
+          }
 
-        if (postCellData == null) {
-          continue
-        }
-
-        postCellData?.let { pcd ->
-          pcd.recalculatePostTitle()
-          bindPostTitle(pcd)
+          postCellDataWeak.get()?.let { pcd ->
+            pcd.recalculatePostTitle()
+            postCellWeak.get()?.bindPostTitle(pcd)
+          }
         }
       }
     }
@@ -1053,8 +821,7 @@ class PostCell : ConstraintLayout,
     val fullPostComment = postCellData.fullPostComment
     comment.typeface = Typeface.DEFAULT
 
-    val newVisibility = if (fullPostComment.isEmpty()
-      && (postCellData.singleImageMode || postCellData.postImages.isEmpty())) {
+    val newVisibility = if (fullPostComment.isEmpty()) {
       View.GONE
     } else {
       View.VISIBLE
@@ -1087,10 +854,34 @@ class PostCell : ConstraintLayout,
     icons.set(PostIcons.HTTP_ICONS, postIcons.isNotEmpty())
 
     if (postIcons.isNotEmpty()) {
-      icons.setHttpIcons(imageLoaderV2, postIcons, theme, iconSizePx)
+      icons.setHttpIcons(imageLoaderV2, postIcons, theme, postCellData.iconSizePx)
     }
 
     icons.apply()
+  }
+
+  private fun bindPostReplies(postCellData: PostCellData) {
+    if (postCellData.isSelectionMode) {
+      setPostLinkableListener(postCellData, false)
+      replies.isClickable = false
+    } else {
+      setPostLinkableListener(postCellData, true)
+      replies.isClickable = true
+    }
+
+    val hasRepliesToThisPost = when {
+      postCellData.isViewingCatalog -> postCellData.catalogRepliesCount > 0
+      postCellData.isViewingThread -> postCellData.repliesFromCount > 0
+      else -> false
+    }
+    val inSelectionMode = postCellData.isSelectionMode
+
+    if (!inSelectionMode && hasRepliesToThisPost) {
+      replies.setVisibilityFast(VISIBLE)
+      replies.text = postCellData.catalogRepliesText
+    } else {
+      replies.setVisibilityFast(GONE)
+    }
   }
 
   @SuppressLint("ClickableViewAccessibility")
@@ -1508,8 +1299,7 @@ class PostCell : ConstraintLayout,
       if (linkable2 == null && linkable1 != null) {
         // regular, non-spoilered link
         if (postCellData != null) {
-          val post = postCellData!!.post
-          consumeEvent = fireCallback(post, linkable1)
+          consumeEvent = fireCallback(postCellData!!.post, linkable1)
         }
       } else if (linkable2 != null && linkable1 != null) {
         // spoilered link, figure out which span is the spoiler
@@ -1517,8 +1307,7 @@ class PostCell : ConstraintLayout,
           if (linkable1.isSpoilerVisible) {
             // linkable2 is the link and we're unspoilered
             if (postCellData != null) {
-              val post = postCellData!!.post
-              consumeEvent = fireCallback(post, linkable2)
+              consumeEvent = fireCallback(postCellData!!.post, linkable2)
             }
           } else {
             // linkable2 is the link and we're spoilered; don't do the click event
@@ -1529,8 +1318,7 @@ class PostCell : ConstraintLayout,
           if (linkable2.isSpoilerVisible) {
             // linkable 1 is the link and we're unspoilered
             if (postCellData != null) {
-              val post = postCellData!!.post
-              consumeEvent = fireCallback(post, linkable1)
+              consumeEvent = fireCallback(postCellData!!.post, linkable1)
             }
           } else {
             // linkable1 is the link and we're spoilered; don't do the click event
@@ -1541,8 +1329,7 @@ class PostCell : ConstraintLayout,
           // weird case where a double stack of linkables, but isn't spoilered
           // (some 4chan stickied posts)
           if (postCellData != null) {
-            val post = postCellData!!.post
-            consumeEvent = fireCallback(post, linkable1)
+            consumeEvent = fireCallback(postCellData!!.post, linkable1)
           }
         }
       }
@@ -1612,14 +1399,11 @@ class PostCell : ConstraintLayout,
    * A MovementMethod that searches for PostLinkables.<br></br>
    * See [PostLinkable] for more information.
    */
-  private class PostViewFastMovementMethod : LinkMovementMethod() {
+  private inner class PostViewFastMovementMethod : LinkMovementMethod() {
+    private var intercept = false
 
     override fun onTouchEvent(widget: TextView, buffer: Spannable, event: MotionEvent): Boolean {
       val action = event.actionMasked
-
-      if (action != MotionEvent.ACTION_UP) {
-        return false
-      }
 
       var x = event.x.toInt()
       var y = event.y.toInt()
@@ -1633,9 +1417,21 @@ class PostCell : ConstraintLayout,
       val line = layout.getLineForVertical(y)
       val off = layout.getOffsetForHorizontal(line, x.toFloat())
       val link = buffer.getSpans(off, off, ClickableSpan::class.java)
+      val clickIsExactlyWithinBounds = (x >= layout.getLineLeft(line)) && (x < layout.getLineRight(line))
+      val clickingSpans = link.isNotEmpty() && clickIsExactlyWithinBounds
 
-      if (link.isNotEmpty()) {
+      if (!intercept && action == MotionEvent.ACTION_UP && clickingSpans) {
         link[0].onClick(widget)
+        return true
+      }
+
+      if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+        intercept = false
+      }
+
+      if (!clickingSpans) {
+        intercept = true
+        postCommentLongtapDetector.passTouchEvent(event)
         return true
       }
 
@@ -1726,24 +1522,12 @@ class PostCell : ConstraintLayout,
     }
   }
 
-  private sealed class PostCommentShiftResult {
-    object CannotShiftComment : PostCommentShiftResult()
-    object ShiftAndAttachToTheSideOfThumbnail : PostCommentShiftResult()
-    data class ShiftWithTopMargin(val topOffset: Int = 0) : PostCommentShiftResult()
-  }
-
   companion object {
     private const val TAG = "PostCell"
 
     const val POST_CELL_ROOT_CLICK_TOKEN = "POST_CELL_ROOT_CLICK"
     const val POST_CELL_ROOT_LONG_CLICK_TOKEN = "POST_CELL_ROOT_LONG_CLICK"
 
-    val horizPaddingPx = dp(4f)
-    val vertPaddingPx = dp(4f)
-    val commentVertPaddingPx = dp(6f)
     val iconsSpacing = dp(4f)
-
-    // Empty comment or comment with only a quote or something like that
-    private const val SUPER_SHORT_COMMENT_LENGTH = 16
   }
 }

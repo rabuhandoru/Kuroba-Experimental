@@ -84,8 +84,6 @@ class CardPostCell : ConstraintLayout,
   private lateinit var replies: TextView
   private lateinit var icons: PostIcons
 
-  private var iconSizePx = 0
-
   private val scope = KurobaCoroutineScope()
 
   private val postBackgroundBlinkAnimation = lazy(LazyThreadSafetyMode.NONE) {
@@ -165,6 +163,10 @@ class CardPostCell : ConstraintLayout,
 
           if (postCellHighlight == postHighlight) {
             return@collect
+          }
+
+          if (blinkExecuted && postHighlight.isBlinking()) {
+            blinkExecuted = false
           }
 
           postCellHighlight = postHighlight.fullCopy()
@@ -269,7 +271,6 @@ class CardPostCell : ConstraintLayout,
     replies = findViewById(R.id.replies)
 
     val textSizeSp = postCellData.textSizeSp
-    iconSizePx = AppModuleAndroidUtils.sp(textSizeSp - 3.toFloat())
     icons.setSpacing(PostCell.iconsSpacing)
     icons.height = AppModuleAndroidUtils.sp(textSizeSp.toFloat())
     icons.rtl(false)
@@ -308,9 +309,9 @@ class CardPostCell : ConstraintLayout,
   private fun bindPost(postCellData: PostCellData) {
     bindPostThumbnails(postCellData)
 
-    if (!TextUtils.isEmpty(postCellData.post.subject)) {
+    if (!TextUtils.isEmpty(postCellData.postTitle)) {
       title.visibility = VISIBLE
-      ChanPostUtils.wrapTextIntoPrecomputedText(postCellData.post.subject, title)
+      ChanPostUtils.wrapTextIntoPrecomputedText(postCellData.postTitle, title)
     } else {
       title.visibility = GONE
       title.text = null
@@ -333,7 +334,7 @@ class CardPostCell : ConstraintLayout,
       return
     }
 
-    val firstPostImage = postCellData.post.firstImage()
+    val firstPostImage = postCellData.firstImage
 
     if (firstPostImage == null || ChanSettings.textOnly.get()) {
       thumbView?.visibility = GONE
@@ -364,7 +365,7 @@ class CardPostCell : ConstraintLayout,
 
       callback?.onThumbnailLongClicked(
         this.postCellData!!.chanDescriptor,
-        this.postCellData!!.post.firstImage()!!
+        this.postCellData!!.firstImage!!
       )
       return@setImageLongClickListener true
     }
@@ -378,6 +379,7 @@ class CardPostCell : ConstraintLayout,
   }
 
   override fun onThemeChanged() {
+    title.setTextColor(themeEngine.chanTheme.postSubjectColor)
     comment.setTextColor(themeEngine.chanTheme.textColorPrimary)
     replies.setTextColor(themeEngine.chanTheme.textColorSecondary)
 
@@ -466,7 +468,7 @@ class CardPostCell : ConstraintLayout,
     comment.textSize = textSizeSp.toFloat()
     replies.textSize = textSizeSp.toFloat()
 
-    val hasIconWithName = postCellData.post.postIcons
+    val hasIconWithName = postCellData.postIcons
       .any { chanPostHttpIcon -> chanPostHttpIcon.iconName.isNotEmpty() }
 
     val postIconsCompactMode = isPostIconCompactModeSpanCount
@@ -510,7 +512,7 @@ class CardPostCell : ConstraintLayout,
     icons.set(PostIcons.HTTP_ICONS, postIcons.isNotEmpty())
 
     if (postIcons.isNotEmpty()) {
-      icons.setHttpIcons(imageLoaderV2, postIcons, theme, iconSizePx)
+      icons.setHttpIcons(imageLoaderV2, postIcons, theme, postCellData.iconSizePx)
     }
 
     icons.apply()

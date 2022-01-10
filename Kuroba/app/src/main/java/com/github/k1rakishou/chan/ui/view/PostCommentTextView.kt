@@ -1,6 +1,7 @@
 package com.github.k1rakishou.chan.ui.view
 
 import android.content.Context
+import android.graphics.Rect
 import android.os.SystemClock
 import android.text.Spannable
 import android.text.SpannableString
@@ -25,7 +26,7 @@ class PostCommentTextView @JvmOverloads constructor(
   defAttrStyle: Int = 0
 ) : AppCompatTextView(context, attributeSet, defAttrStyle) {
   private var selectionMode = false
-  private var needToCanOtherEvents = false
+  private var needToCancelOtherEvents = false
   private var emulatingDoubleTap = false
   private var linkConsumesEvents = false
 
@@ -85,7 +86,7 @@ class PostCommentTextView @JvmOverloads constructor(
       val x = clickX
       val y = clickY
 
-      needToCanOtherEvents = true
+      needToCancelOtherEvents = true
 
       emulatingDoubleTap = true
       emulateMotionEvent(DOWN_TIME_TAGGED, MotionEvent.ACTION_DOWN, x, y)
@@ -110,8 +111,8 @@ class PostCommentTextView @JvmOverloads constructor(
   override fun onTouchEvent(event: MotionEvent): Boolean {
     val action = event.actionMasked
 
-    if (needToCanOtherEvents) {
-      needToCanOtherEvents = false
+    if (needToCancelOtherEvents) {
+      needToCancelOtherEvents = false
 
       val motionEvent = MotionEvent.obtain(0, SystemClock.uptimeMillis(), MotionEvent.ACTION_CANCEL, event.x, event.y, 0)
       touchEventListener?.onTouch(this, motionEvent)
@@ -141,6 +142,14 @@ class PostCommentTextView @JvmOverloads constructor(
     touchEventListener?.onTouch(this, event)
 
     return true
+  }
+
+  override fun onFocusChanged(focused: Boolean, direction: Int, previouslyFocusedRect: Rect?) {
+    try {
+      super.onFocusChanged(focused, direction, previouslyFocusedRect)
+    } catch (error: IndexOutOfBoundsException) {
+      // java.lang.IndexOutOfBoundsException: setSpan (-1 ... -1) starts before 0
+    }
   }
 
   companion object {

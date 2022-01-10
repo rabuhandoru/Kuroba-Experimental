@@ -39,6 +39,7 @@ import com.github.k1rakishou.chan.core.usecase.FilterOutHiddenImagesUseCase
 import com.github.k1rakishou.chan.features.media_viewer.MediaViewerActivity
 import com.github.k1rakishou.chan.features.media_viewer.MediaViewerOptions
 import com.github.k1rakishou.chan.features.media_viewer.helper.MediaViewerGoToImagePostHelper
+import com.github.k1rakishou.chan.features.media_viewer.helper.MediaViewerGoToPostHelper
 import com.github.k1rakishou.chan.features.media_viewer.helper.MediaViewerOpenThreadHelper
 import com.github.k1rakishou.chan.features.media_viewer.helper.MediaViewerScrollerHelper
 import com.github.k1rakishou.chan.features.settings.screens.AppearanceSettingsScreen.Companion.clampColumnsCount
@@ -106,6 +107,8 @@ class AlbumViewController(
   lateinit var mediaViewerScrollerHelper: MediaViewerScrollerHelper
   @Inject
   lateinit var mediaViewerGoToImagePostHelper: MediaViewerGoToImagePostHelper
+  @Inject
+  lateinit var mediaViewerGoToPostHelper: MediaViewerGoToPostHelper
   @Inject
   lateinit var mediaViewerOpenThreadHelper: MediaViewerOpenThreadHelper
   @Inject
@@ -200,6 +203,17 @@ class AlbumViewController(
           popFromNavControllerWithAction(chanDescriptor) { threadController ->
             threadController.selectPostImage(postImage)
           }
+        }
+    }
+
+    mainScope.launch {
+      mediaViewerGoToPostHelper.mediaViewerGoToPostEventsFlow
+        .collect { postDescriptor ->
+          if (postDescriptor.descriptor != chanDescriptor) {
+            return@collect
+          }
+
+          popFromNavController(postDescriptor.descriptor)
         }
     }
 
@@ -455,16 +469,19 @@ class AlbumViewController(
   private fun showImageLongClickOptions(postImage: ChanPostImage) {
     thumbnailLongtapOptionsHelper.onThumbnailLongTapped(
       context = context,
+      chanDescriptor = chanDescriptor,
       isCurrentlyInAlbum = true,
       postImage = postImage,
       presentControllerFunc = { controller -> presentController(controller) },
       showFiltersControllerFunc = { },
       openThreadFunc = { postDescriptor ->
-        popFromNavControllerWithAction(chanDescriptor) {
-          // no-op
-        }
-
+        popFromNavController(chanDescriptor)
         mediaViewerOpenThreadHelper.tryToOpenThread(postDescriptor)
+      },
+      goToPostFunc = {
+        popFromNavControllerWithAction(chanDescriptor) { threadController ->
+          threadController.selectPostImage(postImage)
+        }
       }
     )
   }

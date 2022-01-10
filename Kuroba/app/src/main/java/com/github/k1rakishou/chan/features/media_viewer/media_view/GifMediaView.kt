@@ -10,13 +10,17 @@ import android.view.View
 import android.widget.FrameLayout
 import com.github.k1rakishou.ChanSettings
 import com.github.k1rakishou.chan.R
+import com.github.k1rakishou.chan.core.cache.CacheFileType
 import com.github.k1rakishou.chan.core.cache.downloader.CancelableDownload
 import com.github.k1rakishou.chan.features.media_viewer.MediaLocation
 import com.github.k1rakishou.chan.features.media_viewer.ViewableMedia
 import com.github.k1rakishou.chan.features.media_viewer.helper.CloseMediaActionHelper
 import com.github.k1rakishou.chan.features.media_viewer.helper.FullMediaAppearAnimationHelper
+import com.github.k1rakishou.chan.features.media_viewer.strip.MediaViewerActionStrip
+import com.github.k1rakishou.chan.features.media_viewer.strip.MediaViewerBottomActionStrip
 import com.github.k1rakishou.chan.ui.view.CircularChunkedLoadingBar
 import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils
+import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.isTablet
 import com.github.k1rakishou.chan.utils.setVisibilityFast
 import com.github.k1rakishou.common.ModularResult
 import com.github.k1rakishou.common.awaitCatching
@@ -63,6 +67,7 @@ class GifMediaView(
   private val thumbnailMediaView: ThumbnailMediaView
   private val actualGifView: GifImageView
   private val loadingBar: CircularChunkedLoadingBar
+  private val actionStrip: MediaViewerActionStrip
 
   private val closeMediaActionHelper: CloseMediaActionHelper
   private val gestureDetector: GestureDetector
@@ -72,6 +77,8 @@ class GifMediaView(
 
   override val hasContent: Boolean
     get() = actualGifView.drawable != null
+  override val mediaViewerActionStrip: MediaViewerActionStrip?
+    get() = actionStrip
 
   init {
     AppModuleAndroidUtils.extractActivityComponent(context)
@@ -84,6 +91,12 @@ class GifMediaView(
     thumbnailMediaView = findViewById(R.id.thumbnail_media_view)
     actualGifView = findViewById(R.id.actual_gif_view)
     loadingBar = findViewById(R.id.loading_bar)
+
+    if (isTablet()) {
+      actionStrip = findViewById<MediaViewerBottomActionStrip?>(R.id.left_action_strip)
+    } else {
+      actionStrip = findViewById<MediaViewerBottomActionStrip?>(R.id.bottom_action_strip)
+    }
 
     closeMediaActionHelper = CloseMediaActionHelper(
       context = context,
@@ -228,13 +241,13 @@ class GifMediaView(
   }
 
   override fun show(isLifecycleChange: Boolean) {
-    mediaViewToolbar?.updateWithViewableMedia(pagerPosition, totalPageItemsCount, viewableMedia)
+    super.updateComponentsWithViewableMedia(pagerPosition, totalPageItemsCount, viewableMedia)
     onSystemUiVisibilityChanged(isSystemUiHidden())
     thumbnailMediaView.show()
 
     scope.launch {
       val fullGifDeferredResult = fullGifDeferred.awaitCatching()
-      mediaViewToolbar?.updateWithViewableMedia(pagerPosition, totalPageItemsCount, viewableMedia)
+      super.updateComponentsWithViewableMedia(pagerPosition, totalPageItemsCount, viewableMedia)
 
       when (fullGifDeferredResult) {
         is ModularResult.Error -> {
@@ -267,7 +280,7 @@ class GifMediaView(
             }
           }
 
-          audioPlayerView.loadAndPlaySoundPostAudioIfPossible(
+          audioPlayerView?.loadAndPlaySoundPostAudioIfPossible(
             isLifecycleChange = isLifecycleChange,
             isForceLoad = fullGifDeferredResult.value.isForced,
             viewableMedia = viewableMedia
@@ -335,12 +348,15 @@ class GifMediaView(
       return
     }
 
-    cacheHandler.get().deleteCacheFileByUrlSuspend(mediaLocation.url.toString())
+    cacheHandler.get().deleteCacheFileByUrlSuspend(
+      cacheFileType = CacheFileType.PostMediaFull,
+      url = mediaLocation.url.toString()
+    )
 
     fullGifDeferred.cancel()
     fullGifDeferred = CompletableDeferred<MediaPreloadResult>()
 
-    audioPlayerView.pauseUnpause(isNowPaused = true)
+    audioPlayerView?.pauseUnpause(isNowPaused = true)
 
     thumbnailMediaView.setVisibilityFast(View.VISIBLE)
     actualGifView.setVisibilityFast(View.INVISIBLE)
@@ -371,7 +387,7 @@ class GifMediaView(
 
   private fun onPauseUnpauseButtonToggled(isNowPlaying: Boolean) {
     pauseUnpauseGif(isNowPaused = !isNowPlaying)
-    audioPlayerView.pauseUnpause(isNowPaused = !isNowPlaying)
+    audioPlayerView?.pauseUnpause(isNowPaused = !isNowPlaying)
   }
 
   private fun pauseUnpauseGif(isNowPaused: Boolean) {
@@ -471,7 +487,7 @@ class GifMediaView(
         && (preloadCancelableDownload == null || preloadCancelableDownload?.isRunning() == false)
     }
 
-    return canAutoLoad()
+    return canAutoLoad(cacheFileType = CacheFileType.PostMediaFull)
       && !fullGifDeferred.isCompleted
       && (preloadCancelableDownload == null || preloadCancelableDownload?.isRunning() == false)
   }

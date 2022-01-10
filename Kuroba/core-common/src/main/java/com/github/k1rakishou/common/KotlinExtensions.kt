@@ -2,6 +2,8 @@ package com.github.k1rakishou.common
 
 import android.graphics.Bitmap
 import android.graphics.RectF
+import android.os.Parcel
+import android.os.Parcelable
 import android.system.ErrnoException
 import android.system.OsConstants
 import android.text.Layout
@@ -44,6 +46,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.HttpUrl
+import okhttp3.MediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -1013,6 +1016,14 @@ inline fun <T> Iterable<T>.sumByLong(selector: (T) -> Long): Long {
   return sum
 }
 
+inline fun <T, R> Iterable<T>.chunkedMap(chunkSize: Int, mapper: (List<T>) -> List<R>): List<R> {
+  require(chunkSize > 0) { "Bad chunkSize: $chunkSize" }
+
+  return this
+    .chunked(chunkSize)
+    .flatMap { element -> mapper(element) }
+}
+
 fun SpannableStringBuilder.setSpanSafe(span: CharacterStyle, start: Int, end: Int, flags: Int) {
   setSpan(
     span,
@@ -1188,6 +1199,9 @@ suspend fun <T, R> processDataCollectionConcurrently(
   }
 }
 
+/**
+ * @note: indexed doesn't mean ordered!
+ * */
 suspend fun <T, R> processDataCollectionConcurrentlyIndexed(
   dataList: Collection<T>,
   batchCount: Int = Runtime.getRuntime().availableProcessors(),
@@ -1299,7 +1313,20 @@ fun TextView.getTextBounds(text: CharSequence, availableWidth: Int): TextBounds 
     return TextBounds.EMPTY
   }
 
-  val staticLayout = StaticLayout(text, paint, availableWidth, Layout.Alignment.ALIGN_NORMAL, 1f, 0f, true)
+  val staticLayout = if (AndroidUtils.isAndroidM()) {
+    StaticLayout.Builder
+      .obtain(text, 0, text.length, paint, availableWidth)
+      .setBreakStrategy(breakStrategy)
+      .justificationModeTextView(this)
+      .setHyphenationFrequency(hyphenationFrequency)
+      .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+      .setMaxLines(maxLines)
+      .setIncludePad(true)
+      .setLineSpacing(0f, 1f)
+      .build()
+  } else {
+    StaticLayout(text, paint, availableWidth, Layout.Alignment.ALIGN_NORMAL, 1f, 0f, true)
+  }
 
   val lineBounds = (0 until staticLayout.lineCount)
     .map { line ->
@@ -1316,6 +1343,14 @@ fun TextView.getTextBounds(text: CharSequence, availableWidth: Int): TextBounds 
     staticLayout.height,
     lineBounds
   )
+}
+
+private fun StaticLayout.Builder.justificationModeTextView(textView: TextView): StaticLayout.Builder {
+  if (AndroidUtils.isAndroid10()) {
+    return setJustificationMode(textView.justificationMode)
+  }
+
+  return this
 }
 
 fun <K, V> LruCache<K, V>.contains(key: K): Boolean {
@@ -1456,4 +1491,41 @@ fun Thread.callStack(tag: String = ""): String {
   }
 
   return resultString.toString()
+}
+
+public inline fun buildSpannableString(
+  builderAction: SpannableStringBuilder.() -> Unit
+): SpannableString {
+  val builder = SpannableStringBuilder()
+  builder.builderAction()
+  return SpannableString.valueOf(builder)
+}
+
+fun Parcelable.marshall(): ByteArray {
+  val parcel = Parcel.obtain()
+
+  try {
+    this.writeToParcel(parcel, 0)
+    return parcel.marshall()
+  } finally {
+    parcel.recycle()
+  }
+}
+
+fun <T : Parcelable> ByteArray.unmarshall(creator: Parcelable.Creator<T>): ModularResult<T> {
+  return Try {
+    val parcel = unmarshall(this)
+    return@Try creator.createFromParcel(parcel)
+  }
+}
+
+private fun unmarshall(bytes: ByteArray): Parcel {
+  val parcel = Parcel.obtain()
+  parcel.unmarshall(bytes, 0, bytes.size)
+  parcel.setDataPosition(0)
+  return parcel
+}
+
+fun MediaType.isJson(): Boolean {
+  return type == "application" && subtype == "json"
 }

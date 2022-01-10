@@ -313,14 +313,14 @@ class ChanThreadManager(
     return postsSet
   }
 
-  fun getPostImages(imageToGet: Collection<Pair<PostDescriptor, HttpUrl>>): List<ChanPostImage> {
-    if (imageToGet.isEmpty()) {
+  fun getPostImages(imagesToGet: Collection<Pair<PostDescriptor, HttpUrl>>): List<ChanPostImage> {
+    if (imagesToGet.isEmpty()) {
       return emptyList()
     }
 
     val postImages = mutableListOf<ChanPostImage>()
 
-    imageToGet.forEach { (postDescriptor, imageUrl) ->
+    imagesToGet.forEach { (postDescriptor, imageUrl) ->
       val chanPostImage = chanThreadsCache.getThread(postDescriptor.threadDescriptor())
         ?.getPostImage(postDescriptor, imageUrl)
 
@@ -526,9 +526,19 @@ class ChanThreadManager(
       chanLoadOptions = chanLoadOptions
     )
 
-    return when (result) {
-      is ModularResult.Error -> ThreadLoadResult.Error(chanDescriptor, ChanLoaderException(result.error))
-      is ModularResult.Value -> result.value
+    when (result) {
+      is ModularResult.Error -> {
+        val error = if (result.error is ChanLoaderException) {
+          result.error as ChanLoaderException
+        } else {
+          ChanLoaderException(result.error)
+        }
+
+        return ThreadLoadResult.Error(chanDescriptor, error)
+      }
+      is ModularResult.Value -> {
+        return result.value
+      }
     }
   }
 

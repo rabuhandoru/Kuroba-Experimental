@@ -35,6 +35,7 @@ import com.github.k1rakishou.chan.core.manager.CurrentOpenedDescriptorStateManag
 import com.github.k1rakishou.chan.core.manager.GlobalWindowInsetsManager
 import com.github.k1rakishou.chan.core.manager.SiteManager
 import com.github.k1rakishou.chan.core.manager.ThreadFollowHistoryManager
+import com.github.k1rakishou.chan.core.site.Site
 import com.github.k1rakishou.chan.features.drawer.MainControllerCallbacks
 import com.github.k1rakishou.chan.features.filters.FiltersController
 import com.github.k1rakishou.chan.features.media_viewer.MediaLocation
@@ -42,6 +43,7 @@ import com.github.k1rakishou.chan.features.media_viewer.MediaViewerActivity
 import com.github.k1rakishou.chan.features.media_viewer.MediaViewerOptions
 import com.github.k1rakishou.chan.features.media_viewer.helper.MediaViewerOpenAlbumHelper
 import com.github.k1rakishou.chan.features.media_viewer.helper.MediaViewerScrollerHelper
+import com.github.k1rakishou.chan.features.report.Chan4ReportPostController
 import com.github.k1rakishou.chan.ui.controller.ThreadSlideController.SlideChangeListener
 import com.github.k1rakishou.chan.ui.controller.navigation.ToolbarNavigationController
 import com.github.k1rakishou.chan.ui.helper.AppSettingsUpdateAppRefreshHelper
@@ -54,6 +56,7 @@ import com.github.k1rakishou.chan.ui.view.floating_menu.FloatingListMenuItem
 import com.github.k1rakishou.chan.ui.widget.KurobaSwipeRefreshLayout
 import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils
 import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.dp
+import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.getString
 import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.inflate
 import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.isDevBuild
 import com.github.k1rakishou.core_logger.Logger
@@ -65,6 +68,7 @@ import com.github.k1rakishou.model.data.filter.ChanFilterMutable
 import com.github.k1rakishou.model.data.filter.FilterType
 import com.github.k1rakishou.model.data.post.ChanPost
 import com.github.k1rakishou.model.data.post.ChanPostImage
+import com.github.k1rakishou.persist_state.ReplyMode
 import dagger.Lazy
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -236,6 +240,12 @@ abstract class ThreadController(
     threadLayout.onShown(threadControllerType)
   }
 
+  override fun onHide() {
+    super.onHide()
+
+    threadLayout.onHidden(threadControllerType)
+  }
+
   override fun onDestroy() {
     super.onDestroy()
 
@@ -300,13 +310,59 @@ abstract class ThreadController(
 
   override fun openReportController(post: ChanPost) {
     val site = siteManager.bySiteDescriptor(post.boardDescriptor.siteDescriptor)
-    if (site != null) {
-      val toolbarHeight = toolbar?.toolbarHeight
-        ?: return
-
-      val reportController = ReportController(context, post, site, toolbarHeight)
-      navigationController!!.pushController(reportController)
+    if (site == null || navigationController == null) {
+      return
     }
+
+    if (site.siteDescriptor().is4chan()) {
+      val chan4ReportPostController = Chan4ReportPostController(
+        context = context,
+        postDescriptor = post.postDescriptor,
+        onCaptchaRequired = {
+          val threadDescriptor = ChanDescriptor.ThreadDescriptor.create(post.boardDescriptor, 1L)
+
+          threadLayout.showCaptchaController(
+            chanDescriptor = threadDescriptor,
+            replyMode = ReplyMode.ReplyModeSendWithoutCaptcha,
+            autoReply = false,
+            afterPostingAttempt = true
+          )
+        },
+        onOpenInWebView = {
+          openWebViewReportController(post, site)
+        }
+      )
+
+      requireNavController().presentController(chan4ReportPostController)
+      return
+    } else if (site.siteDescriptor().isDvach()) {
+      dialogFactory.createSimpleDialogWithInput(
+        context = context,
+        titleText = getString(R.string.dvach_report_post_title, post.postDescriptor.userReadableString()),
+        descriptionText = getString(R.string.dvach_report_post_description),
+        inputType = DialogFactory.DialogInputType.String,
+        onValueEntered = { reason -> threadLayout.presenter.processDvachPostReport(reason, post, site) }
+      )
+      return
+    }
+
+    openWebViewReportController(post, site)
+  }
+
+  private fun openWebViewReportController(post: ChanPost, site: Site) {
+    val toolbarHeight = toolbar?.toolbarHeight
+      ?: return
+
+    if (!site.siteFeature(Site.SiteFeature.POST_REPORT)) {
+      return
+    }
+
+    if (site.endpoints().report(post) == null) {
+      return
+    }
+
+    val reportController = WebViewReportController(context, post, site, toolbarHeight)
+    requireNavController().pushController(reportController)
   }
 
   fun selectPostImage(postImage: ChanPostImage) {
@@ -493,6 +549,11 @@ abstract class ThreadController(
       return
     }
 
+    if (supportedArchiveDescriptors.size == 1) {
+      mainScope.launch { onArchiveSelected(supportedArchiveDescriptors.first(), postDescriptor, preview) }
+      return
+    }
+
     val items = mutableListOf<FloatingListMenuItem>()
 
     supportedArchiveDescriptors.forEach { archiveDescriptor ->
@@ -516,26 +577,34 @@ abstract class ThreadController(
           val archiveDescriptor = (clickedItem.key as? ArchiveDescriptor)
             ?: return@launch
 
-          val externalArchivePostDescriptor = PostDescriptor.create(
-            archiveDescriptor.domain,
-            postDescriptor.descriptor.boardCode(),
-            postDescriptor.getThreadNo(),
-            postDescriptor.postNo
-          )
-
-          if (preview) {
-            showPostsInExternalThread(
-              postDescriptor = externalArchivePostDescriptor,
-              isPreviewingCatalogThread = false
-            )
-          } else {
-            openExternalThread(externalArchivePostDescriptor)
-          }
+          onArchiveSelected(archiveDescriptor, postDescriptor, preview)
         }
       }
     )
 
     presentController(floatingListMenuController)
+  }
+
+  private suspend fun onArchiveSelected(
+    archiveDescriptor: ArchiveDescriptor,
+    postDescriptor: PostDescriptor,
+    preview: Boolean
+  ) {
+    val externalArchivePostDescriptor = PostDescriptor.create(
+      archiveDescriptor.domain,
+      postDescriptor.descriptor.boardCode(),
+      postDescriptor.getThreadNo(),
+      postDescriptor.postNo
+    )
+
+    if (preview) {
+      showPostsInExternalThread(
+        postDescriptor = externalArchivePostDescriptor,
+        isPreviewingCatalogThread = false
+      )
+    } else {
+      openExternalThread(externalArchivePostDescriptor)
+    }
   }
 
   data class ShowThreadOptions(

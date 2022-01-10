@@ -4,7 +4,6 @@ import android.text.TextUtils;
 
 import androidx.annotation.Nullable;
 
-import com.github.k1rakishou.ChanSettings;
 import com.github.k1rakishou.common.StringUtils;
 import com.github.k1rakishou.model.data.descriptor.PostDescriptor;
 
@@ -85,7 +84,7 @@ public class ChanPostImageBuilder {
         return this;
     }
 
-    public ChanPostImageBuilder size(long size) {
+    public ChanPostImageBuilder imageSize(long size) {
         this.size = size;
         return this;
     }
@@ -108,10 +107,6 @@ public class ChanPostImageBuilder {
     }
 
     public ChanPostImage build() {
-        if (ChanSettings.removeImageSpoilers.get()) {
-            spoiler = false;
-        }
-
         if (serverFilename == null || serverFilename.isEmpty()) {
             throw new IllegalStateException("Bad serverFilename, null or empty");
         }
@@ -174,4 +169,22 @@ public class ChanPostImageBuilder {
         return ChanPostImageType.STATIC;
     }
 
+    @Override
+    public String toString() {
+        return "ChanPostImageBuilder{" +
+                "serverFilename='" + serverFilename + '\'' +
+                ", thumbnailUrl=" + thumbnailUrl +
+                ", spoilerThumbnailUrl=" + spoilerThumbnailUrl +
+                ", imageUrl=" + imageUrl +
+                ", filename='" + filename + '\'' +
+                ", extension='" + extension + '\'' +
+                ", imageWidth=" + imageWidth +
+                ", imageHeight=" + imageHeight +
+                ", spoiler=" + spoiler +
+                ", size=" + size +
+                ", fileHash='" + fileHash + '\'' +
+                ", inlined=" + inlined +
+                ", ownerPostDescriptor=" + ownerPostDescriptor +
+                '}';
+    }
 }

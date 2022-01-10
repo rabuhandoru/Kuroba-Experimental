@@ -12,15 +12,19 @@ import android.widget.FrameLayout
 import com.davemorrissey.labs.subscaleview.ImageSource
 import com.github.k1rakishou.ChanSettings
 import com.github.k1rakishou.chan.R
+import com.github.k1rakishou.chan.core.cache.CacheFileType
 import com.github.k1rakishou.chan.core.cache.downloader.CancelableDownload
 import com.github.k1rakishou.chan.features.media_viewer.MediaLocation
 import com.github.k1rakishou.chan.features.media_viewer.ViewableMedia
 import com.github.k1rakishou.chan.features.media_viewer.helper.CloseMediaActionHelper
 import com.github.k1rakishou.chan.features.media_viewer.helper.FullMediaAppearAnimationHelper
+import com.github.k1rakishou.chan.features.media_viewer.strip.MediaViewerActionStrip
+import com.github.k1rakishou.chan.features.media_viewer.strip.MediaViewerBottomActionStrip
 import com.github.k1rakishou.chan.ui.view.CircularChunkedLoadingBar
 import com.github.k1rakishou.chan.ui.view.CustomScaleImageView
 import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils
 import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.getString
+import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.isTablet
 import com.github.k1rakishou.chan.utils.setVisibilityFast
 import com.github.k1rakishou.common.ModularResult
 import com.github.k1rakishou.common.awaitCatching
@@ -61,6 +65,7 @@ class FullImageMediaView(
   private val thumbnailMediaView: ThumbnailMediaView
   private val actualImageView: CustomScaleImageView
   private val loadingBar: CircularChunkedLoadingBar
+  private val actionStrip: MediaViewerActionStrip
 
   private val gestureDetector: GestureDetector
   private val gestureDetectorListener: GestureDetectorListener
@@ -71,6 +76,8 @@ class FullImageMediaView(
 
   override val hasContent: Boolean
     get() = actualImageView.hasImage()
+  override val mediaViewerActionStrip: MediaViewerActionStrip
+    get() = actionStrip
 
   init {
     AppModuleAndroidUtils.extractActivityComponent(context)
@@ -83,6 +90,12 @@ class FullImageMediaView(
     thumbnailMediaView = findViewById(R.id.thumbnail_media_view)
     actualImageView = findViewById(R.id.actual_image_view)
     loadingBar = findViewById(R.id.loading_bar)
+
+    if (isTablet()) {
+      actionStrip = findViewById<MediaViewerBottomActionStrip?>(R.id.left_action_strip)
+    } else {
+      actionStrip = findViewById<MediaViewerBottomActionStrip?>(R.id.bottom_action_strip)
+    }
 
     closeMediaActionHelper = CloseMediaActionHelper(
       context = context,
@@ -234,7 +247,7 @@ class FullImageMediaView(
   }
 
   override fun show(isLifecycleChange: Boolean) {
-    mediaViewToolbar?.updateWithViewableMedia(pagerPosition, totalPageItemsCount, viewableMedia)
+    super.updateComponentsWithViewableMedia(pagerPosition, totalPageItemsCount, viewableMedia)
     onSystemUiVisibilityChanged(isSystemUiHidden())
     onUpdateTransparency()
     thumbnailMediaView.show()
@@ -243,7 +256,7 @@ class FullImageMediaView(
       if (hasContent) {
         val isForced = fullImageDeferred.awaitCatching().valueOrNull()?.isForced
         if (isForced != null) {
-          audioPlayerView.loadAndPlaySoundPostAudioIfPossible(
+          audioPlayerView?.loadAndPlaySoundPostAudioIfPossible(
             isLifecycleChange = isLifecycleChange,
             isForceLoad = isForced,
             viewableMedia = viewableMedia
@@ -278,7 +291,7 @@ class FullImageMediaView(
             }
           }
 
-          mediaViewToolbar?.updateWithViewableMedia(pagerPosition, totalPageItemsCount, viewableMedia)
+          super.updateComponentsWithViewableMedia(pagerPosition, totalPageItemsCount, viewableMedia)
         }
       }
 
@@ -317,12 +330,15 @@ class FullImageMediaView(
       return
     }
 
-    cacheHandler.get().deleteCacheFileByUrlSuspend(mediaLocation.url.toString())
+    cacheHandler.get().deleteCacheFileByUrlSuspend(
+      cacheFileType = CacheFileType.PostMediaFull,
+      url = mediaLocation.url.toString()
+    )
 
     fullImageDeferred.cancel()
     fullImageDeferred = CompletableDeferred<MediaPreloadResult>()
 
-    audioPlayerView.pauseUnpause(isNowPaused = true)
+    audioPlayerView?.pauseUnpause(isNowPaused = true)
 
     thumbnailMediaView.setVisibilityFast(View.VISIBLE)
     actualImageView.setVisibilityFast(View.INVISIBLE)
@@ -411,7 +427,7 @@ class FullImageMediaView(
 
       actualImageView.setImage(imageSource)
 
-      audioPlayerView.loadAndPlaySoundPostAudioIfPossible(
+      audioPlayerView?.loadAndPlaySoundPostAudioIfPossible(
         isLifecycleChange = isLifecycleChange,
         isForceLoad = mediaPreloadResult.isForced,
         viewableMedia = viewableMedia
@@ -431,7 +447,7 @@ class FullImageMediaView(
         && (preloadCancelableDownload == null || preloadCancelableDownload?.isRunning() == false)
     }
 
-    return canAutoLoad()
+    return canAutoLoad(cacheFileType = CacheFileType.PostMediaFull)
       && !fullImageDeferred.isCompleted
       && (preloadCancelableDownload == null || preloadCancelableDownload?.isRunning() == false)
   }

@@ -7,13 +7,13 @@ import com.github.k1rakishou.model.data.descriptor.PostDescriptor
 open class ChanPost(
   val chanPostId: Long,
   val postDescriptor: PostDescriptor,
-  val postImages: List<ChanPostImage>,
+  private val _postImages: MutableList<ChanPostImage>,
   val postIcons: List<ChanPostHttpIcon>,
   val repliesTo: Set<PostDescriptor>,
   val timestamp: Long = -1L,
   val postComment: PostComment,
   val subject: CharSequence?,
-  val fullTripcode: CharSequence?,
+  val tripcode: CharSequence?,
   val name: String? = null,
   val posterId: String? = null,
   val moderatorCapcode: String? = null,
@@ -21,6 +21,7 @@ open class ChanPost(
   val isSage: Boolean,
   repliesFrom: Set<PostDescriptor>? = null,
   deleted: Boolean,
+  posterIdColor: Int
 ) {
   /**
    * We use this array to avoid infinite loops when binding posts since after all post content
@@ -34,6 +35,10 @@ open class ChanPost(
   var isDeleted: Boolean = deleted
 
   @get:Synchronized
+  @set:Synchronized
+  var posterIdColor: Int = 0
+
+  @get:Synchronized
   val repliesFrom = mutableSetOf<PostDescriptor>()
 
   @get:Synchronized
@@ -43,16 +48,20 @@ open class ChanPost(
   fun postNo(): Long = postDescriptor.postNo
   fun postSubNo(): Long = postDescriptor.postSubNo
   @Synchronized
-  fun firstImage(): ChanPostImage? = postImages.firstOrNull()
+  fun firstImage(): ChanPostImage? = _postImages.firstOrNull()
 
   fun isOP(): Boolean = postDescriptor.isOP()
 
   @get:Synchronized
   val repliesFromCount: Int
     get() = repliesFrom.size
+
+  @get:Synchronized
+  val postImages: List<ChanPostImage>
+    get() = _postImages
   @get:Synchronized
   val postImagesCount: Int
-    get() = postImages.size
+    get() = _postImages.size
 
   open val catalogRepliesCount: Int
     get() = 0
@@ -64,27 +73,9 @@ open class ChanPost(
   val boardDescriptor: BoardDescriptor
     get() = postDescriptor.boardDescriptor()
 
-  val actualTripcode: String? by lazy {
-    val tripcodeString = if (fullTripcode.isNullOrEmpty()) {
-      return@lazy null
-    } else {
-      fullTripcode.trim()
-    }
-
-    val index = tripcodeString.lastIndexOf(" ")
-    if (index < 0) {
-      return@lazy null
-    }
-
-    val actualTripcodeMaybe = tripcodeString.substring(startIndex = index + 1)
-    if (!actualTripcodeMaybe.startsWith("!")) {
-      return@lazy null
-    }
-
-    return@lazy actualTripcodeMaybe
-  }
-
   init {
+    this.posterIdColor = posterIdColor
+
     for (loaderType in LoaderType.values()) {
       onDemandContentLoadedArray[loaderType.arrayIndex] = false
     }
@@ -96,15 +87,16 @@ open class ChanPost(
     return ChanPost(
       chanPostId = chanPostId,
       postDescriptor = postDescriptor,
-      postImages = postImages,
+      _postImages = _postImages,
       postIcons = postIcons,
       repliesTo = repliesTo,
       timestamp = timestamp,
       postComment = postComment.copy(),
       subject = subject.copy(),
-      fullTripcode = fullTripcode.copy(),
+      tripcode = tripcode.copy(),
       name = name,
       posterId = posterId,
+      posterIdColor = posterIdColor,
       moderatorCapcode = moderatorCapcode,
       isSavedReply = isSavedReply,
       repliesFrom = repliesFrom,
@@ -175,7 +167,7 @@ open class ChanPost(
 
   @Synchronized
   fun firstPostImageOrNull(predicate: (ChanPostImage) -> Boolean): ChanPostImage? {
-    for (postImage in postImages) {
+    for (postImage in _postImages) {
       if (predicate.invoke(postImage)) {
         return postImage
       }
@@ -186,9 +178,21 @@ open class ChanPost(
 
   @Synchronized
   fun iteratePostImages(iterator: (ChanPostImage) -> Unit) {
-    for (postImage in postImages) {
+    for (postImage in _postImages) {
       iterator.invoke(postImage)
     }
+  }
+
+  @Synchronized
+  fun addImage(thirdEyeImage: ChanPostImage) {
+    val alreadyAdded = _postImages
+      .any { postImage -> postImage.serverFilename == thirdEyeImage.serverFilename }
+
+    if (alreadyAdded) {
+      return
+    }
+
+    _postImages += thirdEyeImage
   }
 
   override fun equals(other: Any?): Boolean {
@@ -213,10 +217,13 @@ open class ChanPost(
     if (name != other.name) {
       return false
     }
-    if (fullTripcode != other.fullTripcode) {
+    if (tripcode != other.tripcode) {
       return false
     }
     if (posterId != other.posterId) {
+      return false
+    }
+    if (posterIdColor != other.posterIdColor) {
       return false
     }
     if (moderatorCapcode != other.moderatorCapcode) {
@@ -242,23 +249,24 @@ open class ChanPost(
   }
 
   private fun arePostImagesTheSame(other: ChanPost): Boolean {
-    if (postImages.size != other.postImages.size) {
+    if (_postImages.size != other._postImages.size) {
       return false
     }
 
-    return postImages.indices.none { postImages[it] != other.postImages[it] }
+    return _postImages.indices.none { _postImages[it] != other._postImages[it] }
   }
 
   override fun hashCode(): Int {
     var result = chanPostId.hashCode()
     result = 31 * result + postDescriptor.hashCode()
     result = 31 * result + repliesTo.hashCode()
-    result = 31 * result + postImages.hashCode()
+    result = 31 * result + _postImages.hashCode()
     result = 31 * result + postComment.hashCode()
     result = 31 * result + subject.hashCode()
     result = 31 * result + (name?.hashCode() ?: 0)
-    result = 31 * result + fullTripcode.hashCode()
+    result = 31 * result + tripcode.hashCode()
     result = 31 * result + (posterId?.hashCode() ?: 0)
+    result = 31 * result + posterIdColor.hashCode()
     result = 31 * result + (moderatorCapcode?.hashCode() ?: 0)
     result = 31 * result + isSavedReply.hashCode()
     result = 31 * result + isSage.hashCode()
@@ -269,7 +277,7 @@ open class ChanPost(
     return "ChanPost{" +
       "chanPostId=" + chanPostId +
       ", postDescriptor=" + postDescriptor +
-      ", postImages=" + postImages.size +
+      ", postImages=" + _postImages.size +
       ", subject='" + subject + '\'' +
       ", postComment=" + postComment.originalComment().take(64) +
       '}'

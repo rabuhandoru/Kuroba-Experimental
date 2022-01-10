@@ -21,7 +21,9 @@ import com.github.k1rakishou.chan.core.manager.BoardManager
 import com.github.k1rakishou.chan.core.manager.GlobalWindowInsetsManager
 import com.github.k1rakishou.chan.core.manager.SiteManager
 import com.github.k1rakishou.chan.core.manager.WindowInsetsListener
-import com.github.k1rakishou.chan.core.usecase.CreateBoardManuallyUseCase
+import com.github.k1rakishou.chan.features.bypass.CookieResult
+import com.github.k1rakishou.chan.features.bypass.FirewallType
+import com.github.k1rakishou.chan.features.bypass.SiteFirewallBypassController
 import com.github.k1rakishou.chan.features.setup.data.BoardsSetupControllerState
 import com.github.k1rakishou.chan.features.setup.epoxy.EpoxyBoardView
 import com.github.k1rakishou.chan.features.setup.epoxy.EpoxyBoardViewModel_
@@ -32,11 +34,14 @@ import com.github.k1rakishou.chan.ui.epoxy.epoxyLoadingView
 import com.github.k1rakishou.chan.ui.epoxy.epoxyTextView
 import com.github.k1rakishou.chan.ui.theme.widget.ColorizableFloatingActionButton
 import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.dp
+import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.getString
 import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.inflate
+import com.github.k1rakishou.common.errorMessageOrClassName
 import com.github.k1rakishou.common.updateMargins
 import com.github.k1rakishou.common.updatePaddings
 import com.github.k1rakishou.model.data.descriptor.SiteDescriptor
 import kotlinx.coroutines.launch
+import okhttp3.HttpUrl
 import javax.inject.Inject
 
 class BoardsSetupController(
@@ -50,8 +55,6 @@ class BoardsSetupController(
   lateinit var boardManager: BoardManager
   @Inject
   lateinit var dialogFactory: DialogFactory
-  @Inject
-  lateinit var createBoardManuallyUseCase: CreateBoardManuallyUseCase
   @Inject
   lateinit var globalWindowInsetsManager: GlobalWindowInsetsManager
 
@@ -67,8 +70,7 @@ class BoardsSetupController(
     BoardsSetupPresenter(
       siteDescriptor = siteDescriptor,
       siteManager = siteManager,
-      boardManager = boardManager,
-      createBoardManuallyUseCase = createBoardManuallyUseCase
+      boardManager = boardManager
     )
   }
 
@@ -131,9 +133,7 @@ class BoardsSetupController(
     navigation.title = context.getString(R.string.controller_boards_setup_title, siteDescriptor.siteName)
 
     val site = siteManager.bySiteDescriptor(siteDescriptor)!!
-
     val syntheticSite = site.isSynthetic
-    val canCreateBoardsManually = site.canCreateBoardsManually
 
     val builder = navigation
       .buildMenu(context)
@@ -141,11 +141,6 @@ class BoardsSetupController(
     if (!syntheticSite) {
       builder
         .withItem(R.drawable.ic_refresh_white_24dp) { presenter.updateBoardsFromServerAndDisplayActive() }
-    }
-
-    if (canCreateBoardsManually) {
-      builder
-        .withItem(R.drawable.ic_create_white_24dp) { onCreateBoardManuallyClicked() }
     }
 
     builder
@@ -210,6 +205,34 @@ class BoardsSetupController(
     mainScope.launch { showToast(R.string.controller_boards_setup_boards_updated) }
   }
 
+  override fun showCloudflareBypassController(firewallType: FirewallType, urlToOpen: HttpUrl) {
+    val siteFirewallBypassController = SiteFirewallBypassController(
+      context = context,
+      firewallType = firewallType,
+      urlToOpen = urlToOpen.toString(),
+      onResult = { cookieResult ->
+        when (cookieResult) {
+          is CookieResult.CookieValue -> {
+            presenter.updateBoardsFromServerAndDisplayActive(retrying = true)
+            showToast(getString(R.string.firewall_check_success, firewallType))
+            return@SiteFirewallBypassController
+          }
+          is CookieResult.Error -> {
+            showToast(getString(
+              R.string.firewall_check_failure,
+              firewallType, cookieResult.exception.errorMessageOrClassName()
+            ))
+          }
+          CookieResult.Canceled -> {
+            showToast(getString(R.string.firewall_check_canceled, firewallType))
+          }
+        }
+      }
+    )
+
+    presentController(siteFirewallBypassController)
+  }
+
   private fun onStateChanged(state: BoardsSetupControllerState) {
     controller.callback = {
       when (state) {
@@ -268,22 +291,6 @@ class BoardsSetupController(
 
   override fun showMessageToast(message: String) {
     showToast(message, Toast.LENGTH_LONG)
-  }
-
-  private fun onCreateBoardManuallyClicked() {
-    dialogFactory.createSimpleDialogWithInput(
-      context = context,
-      titleTextId = R.string.controller_boards_setup_enter_board_code,
-      inputType = DialogFactory.DialogInputType.String,
-      onValueEntered = { boardCode ->
-        if (boardCode.isEmpty()) {
-          showToast(R.string.controller_boards_setup_board_code_is_empty)
-          return@createSimpleDialogWithInput
-        }
-
-        presenter.createBoardManually(boardCode)
-      }
-    )
   }
 
   private inner class BoardsEpoxyController : EpoxyController() {

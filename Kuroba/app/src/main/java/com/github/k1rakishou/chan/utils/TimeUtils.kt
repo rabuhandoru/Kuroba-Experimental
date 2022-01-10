@@ -38,6 +38,10 @@ object TimeUtils {
 
   @JvmStatic
   fun isHalloweenToday(): Boolean {
+    if (!ChanSettings.funThingsAreFun.get()) {
+      return false
+    }
+
     if (ChanSettings.forceHalloweenMode.get()) {
       return true
     }
@@ -48,21 +52,55 @@ object TimeUtils {
       return day in 30..31
     }
 
-    if (calendar[Calendar.MONTH] == Calendar.NOVEMBER) {
-      return day == 1
-    }
-
     return false
   }
 
   @JvmStatic
   fun is4chanBirthdayToday(): Boolean {
+    if (!ChanSettings.funThingsAreFun.get()) {
+      return false
+    }
+
     if (ChanSettings.force4chanBirthdayMode.get()) {
       return true
     }
 
     return calendar[Calendar.MONTH] == Calendar.OCTOBER
       && calendar[Calendar.DAY_OF_MONTH] == 1
+  }
+
+  @JvmStatic
+  fun isChristmasToday(): Boolean {
+    if (!ChanSettings.funThingsAreFun.get()) {
+      return false
+    }
+
+    if (ChanSettings.forceChristmasMode.get()) {
+      return true
+    }
+
+    val day = calendar[Calendar.DAY_OF_MONTH]
+
+    val isDecember = calendar[Calendar.MONTH] == Calendar.DECEMBER
+    if (isDecember) {
+      return day in 24..25
+    }
+
+    return false
+  }
+
+  @JvmStatic
+  fun isNewYearToday(): Boolean {
+    if (!ChanSettings.funThingsAreFun.get()) {
+      return false
+    }
+
+    if (ChanSettings.forceNewYearMode.get()) {
+      return true
+    }
+
+    val day = calendar[Calendar.DAY_OF_MONTH]
+    return calendar[Calendar.MONTH] == Calendar.DECEMBER && day == 31
   }
 
 }

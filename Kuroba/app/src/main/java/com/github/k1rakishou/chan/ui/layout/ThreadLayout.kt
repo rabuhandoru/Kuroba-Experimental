@@ -95,6 +95,7 @@ import com.github.k1rakishou.model.data.post.ChanPost
 import com.github.k1rakishou.model.data.post.ChanPostHide
 import com.github.k1rakishou.model.data.post.ChanPostImage
 import com.github.k1rakishou.persist_state.IndexAndTop
+import com.github.k1rakishou.persist_state.ReplyMode
 import com.google.android.material.snackbar.Snackbar
 import dagger.Lazy
 import kotlinx.coroutines.CoroutineName
@@ -428,6 +429,10 @@ class ThreadLayout @JvmOverloads constructor(
 
   fun onShown(nowFocused: ThreadSlideController.ThreadControllerType) {
     threadListLayout.onShown(nowFocused, visible == Visible.THREAD)
+  }
+
+  fun onHidden(nowFocused: ThreadSlideController.ThreadControllerType) {
+    threadListLayout.onHidden(nowFocused, visible == Visible.THREAD)
   }
 
   fun setBoardPostViewMode(boardPostViewMode: BoardPostViewMode) {
@@ -798,10 +803,6 @@ class ThreadLayout @JvmOverloads constructor(
 
   override fun smoothScrollNewPosts(displayPosition: Int) {
     threadListLayout.smoothScrollNewPosts(displayPosition)
-  }
-
-  override fun highlightPost(postDescriptor: PostDescriptor?, blink: Boolean) {
-    threadListLayout.highlightPost(postDescriptor, blink)
   }
 
   override fun filterPostTripcode(tripcode: CharSequence) {
@@ -1243,6 +1244,16 @@ class ThreadLayout @JvmOverloads constructor(
     openReplyInternal(open)
   }
 
+  override fun showCaptchaController(
+    chanDescriptor: ChanDescriptor,
+    replyMode: ReplyMode,
+    autoReply: Boolean,
+    afterPostingAttempt: Boolean,
+    onFinished: ((Boolean) -> Unit)?
+  ) {
+    threadListLayout.showCaptcha(chanDescriptor, replyMode, autoReply, afterPostingAttempt, onFinished)
+  }
+
   override fun showReplyButton(show: Boolean) {
     if (replyButton.isFabVisible() == show || !ChanSettings.enableReplyFab.get()) {
       return
@@ -1319,6 +1330,14 @@ class ThreadLayout @JvmOverloads constructor(
 
   override fun presentRepliesController(controller: Controller) {
     callback.presentController(controller, true)
+  }
+
+  override fun highlightPost(postDescriptor: PostDescriptor?, blink: Boolean) {
+    threadListLayout.highlightPost(postDescriptor, blink)
+  }
+
+  override fun scrollToPost(postDescriptor: PostDescriptor, smooth: Boolean) {
+    presenter.scrollToPost(postDescriptor, smooth)
   }
 
   override fun presentReencodeOptionsController(controller: Controller) {
