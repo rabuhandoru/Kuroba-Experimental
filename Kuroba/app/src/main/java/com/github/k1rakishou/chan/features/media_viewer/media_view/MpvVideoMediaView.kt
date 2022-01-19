@@ -34,7 +34,6 @@ import com.github.k1rakishou.chan.ui.view.floating_menu.FloatingListMenuItem
 import com.github.k1rakishou.chan.ui.widget.SimpleAnimatorListener
 import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils
 import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.getString
-import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.isTablet
 import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.showToast
 import com.github.k1rakishou.chan.utils.BackgroundUtils
 import com.github.k1rakishou.chan.utils.setEnabledFast
@@ -134,7 +133,7 @@ class MpvVideoMediaView(
     mpvSettings = findViewById(R.id.mpv_settings)
     mpvErrorMessage = findViewById(R.id.error_message)
 
-    if (isTablet()) {
+    if (AppModuleAndroidUtils.isTablet()) {
       actionStrip = findViewById<MediaViewerBottomActionStrip?>(R.id.left_action_strip)
     } else {
       actionStrip = findViewById<MediaViewerBottomActionStrip?>(R.id.bottom_action_strip)
@@ -163,7 +162,13 @@ class MpvVideoMediaView(
 
       actualVideoPlayerView.cycleHwdec()
     }
-    mpvPlayPause.setOnClickListener { actualVideoPlayerView.cyclePause() }
+    mpvPlayPause.setOnClickListener {
+      if (playJob == null && !playing) {
+        startPlayingVideo(isLifecycleChange = false)
+      } else if (playing) {
+        actualVideoPlayerView.cyclePause()
+      }
+    }
 
     mpvVideoProgress.addListener(object : TimeBar.OnScrubListener {
       override fun onScrubStart(timeBar: TimeBar, position: Long) {
@@ -185,7 +190,6 @@ class MpvVideoMediaView(
 
     mpvMuteUnmute.setEnabledFast(false)
     mpvHwSw.setEnabledFast(false)
-    mpvPlayPause.setEnabledFast(false)
     mpvSettings.setEnabledFast(false)
 
     val movableContainer = actualVideoPlayerView.findViewById<View>(R.id.media_view_video_root)
@@ -507,7 +511,6 @@ class MpvVideoMediaView(
         showBufferingJob = null
 
         mpvHwSw.setEnabledFast(true)
-        mpvPlayPause.setEnabledFast(true)
         mpvSettings.setEnabledFast(true)
 
         if (_hasAudio) {

@@ -16,6 +16,7 @@
  */
 package com.github.k1rakishou.chan.ui.cell.post_thumbnail
 
+import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
@@ -23,8 +24,10 @@ import android.graphics.Paint
 import android.graphics.Rect
 import android.text.TextUtils
 import android.util.AttributeSet
+import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.TextView
+import androidx.core.animation.addListener
 import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.withTranslation
 import com.github.k1rakishou.ChanSettings
@@ -38,14 +41,15 @@ import com.github.k1rakishou.chan.core.manager.PrefetchState.PrefetchCompleted
 import com.github.k1rakishou.chan.core.manager.PrefetchState.PrefetchProgress
 import com.github.k1rakishou.chan.core.manager.PrefetchState.PrefetchStarted
 import com.github.k1rakishou.chan.core.manager.PrefetchStateManager
+import com.github.k1rakishou.chan.core.manager.ThirdEyeManager
 import com.github.k1rakishou.chan.features.media_viewer.MediaViewerControllerViewModel.Companion.canAutoLoad
-import com.github.k1rakishou.chan.features.thirdeye.ThirdEyeManager
 import com.github.k1rakishou.chan.ui.cell.PostCellData
 import com.github.k1rakishou.chan.ui.view.SegmentedCircleDrawable
 import com.github.k1rakishou.chan.ui.view.ThumbnailView
 import com.github.k1rakishou.chan.ui.view.ThumbnailView.ThumbnailViewOptions
 import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils
 import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.dp
+import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.getDrawable
 import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.getString
 import com.github.k1rakishou.chan.utils.setOnThrottlingClickListener
 import com.github.k1rakishou.chan.utils.setOnThrottlingLongClickListener
@@ -58,6 +62,7 @@ import dagger.Lazy
 import io.reactivex.disposables.CompositeDisposable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.reactive.asFlow
 import kotlinx.coroutines.withContext
@@ -79,6 +84,7 @@ class PostImageThumbnailView @JvmOverloads constructor(
   lateinit var cacheHandler: CacheHandler
 
   private val scope = KurobaCoroutineScope()
+  private val thirdEyeIcon by lazy { getDrawable(R.drawable.ic_baseline_eye_24).mutate() }
 
   private var postImage: ChanPostImage? = null
   private var canUseHighResCells: Boolean = false
@@ -94,8 +100,9 @@ class PostImageThumbnailView @JvmOverloads constructor(
   private val circularProgressDrawableBounds = Rect()
   private val compositeDisposable = CompositeDisposable()
   private var segmentedCircleDrawable: SegmentedCircleDrawable? = null
-  private var hasThirdEyeImage: Boolean = false
+  private var hasThirdEyeImageMaybe: Boolean = false
   private var nsfwMode: Boolean = false
+  private var alphaAnimator: ValueAnimator? = null
 
   private val prefetchStateManager: PrefetchStateManager
     get() = _prefetchStateManager.get()
@@ -136,39 +143,97 @@ class PostImageThumbnailView @JvmOverloads constructor(
       }
     }
 
-    if (thirdEyeManager.isEnabled()) {
-      listenForThirdEyeUpdates(postImage)
-    }
+    listenForThirdEyeUpdates(postImage)
 
     bindPostImage(postImage, canUseHighResCells, false, thumbnailViewOptions)
   }
 
   private fun listenForThirdEyeUpdates(postImage: ChanPostImage) {
     scope.launch {
-      checkAndInvalidate(postImage)
-
-      thirdEyeManager.thirdEyeImageAddedFlow.collect { postDescriptor ->
-        if (postImage.ownerPostDescriptor != postDescriptor) {
-          return@collect
-        }
-
-        checkAndInvalidate(postImage)
+      if (!thirdEyeManager.isEnabled()) {
+        return@launch
       }
+
+      hasThirdEyeImageMaybe = withContext(Dispatchers.Default) {
+        thirdEyeManager.extractThirdEyeHashOrNull(postImage) != null
+      }
+
+      if (hasThirdEyeImageMaybe) {
+        invalidate()
+      }
+
+      val thirdEyeImage = thirdEyeManager.imageForPost(postImage.ownerPostDescriptor)
+      if (thirdEyeImage == null && hasThirdEyeImageMaybe) {
+        // To avoid running the animation again after we rebind the post which happens after PostLoader
+        // finishes it's job.
+        runOrStopGlowAnimation(stop = false)
+      } else {
+        runOrStopGlowAnimation(stop = true)
+      }
+
+      thirdEyeManager.thirdEyeImageAddedFlow
+        .onCompletion { runOrStopGlowAnimation(stop = true) }
+        .collect { postDescriptor ->
+          if (postImage.ownerPostDescriptor != postDescriptor) {
+            return@collect
+          }
+
+          hasThirdEyeImageMaybe = withContext(Dispatchers.Default) {
+            thirdEyeManager.extractThirdEyeHashOrNull(postImage) != null
+          }
+
+          if (hasThirdEyeImageMaybe) {
+            invalidate()
+          }
+
+          runOrStopGlowAnimation(stop = true)
+        }
     }
   }
 
-  private suspend fun checkAndInvalidate(postImage: ChanPostImage) {
-    hasThirdEyeImage = withContext(Dispatchers.Default) {
-      thirdEyeManager.extractThirdEyeHashOrNull(postImage) != null
+  private fun runOrStopGlowAnimation(stop: Boolean = false) {
+    alphaAnimator?.end()
+    alphaAnimator = null
+
+    if (stop) {
+      return
     }
 
-    invalidate()
+    fun onEndOrCancel() {
+      thirdEyeIcon.alpha = 255
+      invalidate()
+
+      alphaAnimator = null
+    }
+
+    alphaAnimator = ValueAnimator.ofFloat(.2f, .8f).apply {
+      duration = 500
+      repeatMode = ValueAnimator.REVERSE
+      repeatCount = ValueAnimator.INFINITE
+      interpolator = glowInterpolator
+
+      addUpdateListener { animator ->
+        val alpha = (animator.animatedValue as Float * 255f).toInt()
+
+        thirdEyeIcon.alpha = alpha
+        invalidate()
+      }
+
+      addListener(
+        onEnd = { onEndOrCancel() },
+        onCancel = { onEndOrCancel() }
+      )
+
+      start()
+    }
   }
 
   override fun unbindPostImage() {
     postImage = null
     canUseHighResCells = false
-    hasThirdEyeImage = false
+    hasThirdEyeImageMaybe = false
+
+    runOrStopGlowAnimation(stop = true)
 
     thumbnail.unbindImageUrl()
     compositeDisposable.clear()
@@ -384,6 +449,10 @@ class PostImageThumbnailView @JvmOverloads constructor(
       return
     }
 
+    if (nsfwMode) {
+      canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), nsfwModePaint)
+    }
+
     if (chanPostImage.isPlayableType()) {
       val iconScale = 1
       val scalar = (Math.pow(2.0, iconScale.toDouble()) - 1) / Math.pow(2.0, iconScale.toDouble())
@@ -395,9 +464,12 @@ class PostImageThumbnailView @JvmOverloads constructor(
       playIcon.draw(canvas)
     }
 
-    if (hasThirdEyeImage) {
+    if (hasThirdEyeImageMaybe) {
       val x = (width - thirdEyeIconSize - cornerIndicatorMargin).toInt()
       val y = cornerIndicatorMargin.toInt()
+
+      val circleRadius = thirdEyeIconSize.toFloat() / 2f
+      canvas.drawCircle(x.toFloat() + circleRadius, y.toFloat() + circleRadius, circleRadius, thirdEyeIconBgPaint)
 
       thirdEyeIconBounds.set(x, y, x + thirdEyeIconSize, y + thirdEyeIconSize)
       thirdEyeIcon.bounds = thirdEyeIconBounds
@@ -410,10 +482,6 @@ class PostImageThumbnailView @JvmOverloads constructor(
         segmentedCircleDrawable!!.bounds = circularProgressDrawableBounds
         segmentedCircleDrawable!!.draw(canvas)
       }
-    }
-
-    if (nsfwMode) {
-      canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), nsfwModePaint)
     }
   }
 
@@ -443,15 +511,18 @@ class PostImageThumbnailView @JvmOverloads constructor(
     private val prefetchIndicatorSize = dp(16f)
     private val thirdEyeIconSize = dp(16f)
     private val OMITTED_FILES_INDICATOR_PADDING = dp(4f)
-
-    private val playIcon = AppModuleAndroidUtils.getDrawable(R.drawable.ic_play_circle_outline_white_24dp)
-    private val thirdEyeIcon = AppModuleAndroidUtils.getDrawable(R.drawable.ic_baseline_eye_24)
+    private val playIcon = getDrawable(R.drawable.ic_play_circle_outline_white_24dp)
+    private val glowInterpolator = AccelerateDecelerateInterpolator()
 
     private val nsfwModePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
       color = ColorUtils.setAlphaComponent(Color.DKGRAY, 225)
       style = Paint.Style.FILL
     }
 
+    private val thirdEyeIconBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      color = ColorUtils.setAlphaComponent(Color.BLACK, 128)
+      style = Paint.Style.FILL
+    }
   }
 
 }

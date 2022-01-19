@@ -9,6 +9,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.MutatePriority
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.DraggableState
@@ -73,8 +74,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Shape
@@ -404,7 +407,7 @@ fun KurobaComposeCustomTextField(
           ContentAlpha.disabled
         }
 
-        val hintColor = remember(key1 = parentBackgroundColor) {
+        val hintColor = remember(key1 = parentBackgroundColor, key2 = alpha) {
           if (parentBackgroundColor.isUnspecified) {
             Color.DarkGray.copy(alpha = alpha)
           } else {
@@ -522,7 +525,7 @@ private fun KurobaComposeCustomTextFieldInternal(
         placeables[labelTextSlotId] = placeable
       }
 
-      // We are always supposed to have at least the text
+      // We are always supposed to at least have the text
       measurables[textSlotId]!!.let { textMeasurable ->
         val textCounterPlaceable = measurables[textCounterSlotId]?.let { textCounterMeasurable ->
           val placeable = textCounterMeasurable.measure(Constraints(maxWidth = constraints.maxWidth))
@@ -532,12 +535,9 @@ private fun KurobaComposeCustomTextFieldInternal(
         }
 
         val textCounterHeight = (textCounterPlaceable?.height ?: 0)
+        val newMaxHeight = (constraints.maxHeight - textCounterHeight).coerceAtLeast(constraints.minHeight)
 
-        val textPlaceable = textMeasurable.measure(
-          constraints.copy(
-            maxHeight = constraints.maxHeight - textCounterHeight
-          )
-        )
+        val textPlaceable = textMeasurable.measure(constraints.copy(maxHeight = newMaxHeight))
         placeables[textSlotId] = textPlaceable
 
         maxHeight = Math.max(
@@ -636,6 +636,7 @@ fun KurobaComposeCheckbox(
           onCheckChanged(isChecked)
         }
       )
+      .padding(vertical = 4.dp)
       .then(modifier)
   ) {
     Checkbox(
@@ -705,10 +706,10 @@ fun KurobaComposeButton(
 
 @Composable
 fun KurobaComposeTextBarButton(
-  onClick: () -> Unit,
-  text: String,
   modifier: Modifier = Modifier,
   enabled: Boolean = true,
+  onClick: () -> Unit,
+  text: String,
 ) {
   val chanTheme = LocalChanTheme.current
 
@@ -760,16 +761,15 @@ fun KurobaComposeSlider(
 @Composable
 fun KurobaComposeIcon(
   @DrawableRes drawableId: Int,
-  themeEngine: ThemeEngine,
   modifier: Modifier = Modifier,
   colorBelowIcon: Color? = null
 ) {
   val chanTheme = LocalChanTheme.current
   val tintColor = remember(key1 = chanTheme) {
     if (colorBelowIcon == null) {
-      Color(themeEngine.resolveDrawableTintColor())
+      Color(ThemeEngine.resolveDrawableTintColor(chanTheme))
     } else {
-      Color(themeEngine.resolveDrawableTintColor(ThemeEngine.isDarkColor(colorBelowIcon.value)))
+      Color(ThemeEngine.resolveDrawableTintColor(ThemeEngine.isDarkColor(colorBelowIcon.value)))
     }
   }
 
@@ -785,6 +785,7 @@ private val defaultNoopClickCallback = { }
 
 @OptIn(ExperimentalFoundationApi::class)
 fun Modifier.kurobaClickable(
+  enabled: Boolean = true,
   bounded: Boolean = false,
   onLongClick: (() -> Unit)? = null,
   onClick: (() -> Unit)? = null
@@ -806,6 +807,7 @@ fun Modifier.kurobaClickable(
 
     return@composed then(
       Modifier.combinedClickable(
+        enabled = enabled,
         indication = rememberRipple(bounded = bounded, color = color),
         interactionSource = remember { MutableInteractionSource() },
         onLongClick = onLongClick,
@@ -838,7 +840,6 @@ fun KurobaComposeCardView(
 fun KurobaSearchInput(
   modifier: Modifier = Modifier,
   chanTheme: ChanTheme,
-  themeEngine: ThemeEngine,
   onBackgroundColor: Color,
   searchQueryState: MutableState<String>,
   onSearchQueryChanged: (String) -> Unit,
@@ -899,7 +900,6 @@ fun KurobaSearchInput(
               }
             ),
           drawableId = R.drawable.ic_clear_white_24dp,
-          themeEngine = themeEngine,
           colorBelowIcon = chanTheme.primaryColorCompose
         )
       }
@@ -1149,5 +1149,76 @@ private fun Modifier.sliderPressModifier(
         interactionSource.emit(finishInteraction)
       }
     )
+  }
+}
+
+@Composable
+fun KurobaComposeCollapsable(
+  gradientEndColor: Color,
+  enabled: Boolean = true,
+  defaultCollapsed: Boolean = true,
+  contentMaxAllowedHeight: Dp = 128.dp,
+  content: @Composable () -> Unit
+) {
+  val indicatorHeight = 32.dp
+  var collapsed by remember { mutableStateOf(defaultCollapsed) }
+
+  BoxWithConstraints(
+    modifier = Modifier.wrapContentHeight()
+  ) {
+    val takenHeight = maxHeight
+    val exceedsAllowedHeight = takenHeight > contentMaxAllowedHeight
+
+    val targetContainerHeight = if (exceedsAllowedHeight && collapsed) {
+      contentMaxAllowedHeight
+    } else {
+      takenHeight + indicatorHeight
+    }
+
+    val targetContentHeight = if (exceedsAllowedHeight && collapsed) {
+      contentMaxAllowedHeight
+    } else {
+      takenHeight
+    }
+
+    Box(modifier = Modifier.height(targetContainerHeight)) {
+      Box(modifier = Modifier.height(targetContentHeight)) {
+        content()
+      }
+
+      if (exceedsAllowedHeight) {
+        val verticalGradientBrush = remember(key1 = gradientEndColor) {
+          val topColor = Color.Transparent
+          val bottomColor = gradientEndColor.copy(alpha = 0.8f)
+
+          Brush.verticalGradient(colors = listOf(topColor, bottomColor))
+        }
+
+        Box(
+          modifier = Modifier
+            .fillMaxWidth()
+            .height(indicatorHeight)
+            .align(Alignment.BottomCenter)
+            .background(brush = verticalGradientBrush)
+            .kurobaClickable(
+              enabled = enabled,
+              bounded = true,
+              onClick = { collapsed = !collapsed }
+            ),
+          contentAlignment = Alignment.Center
+        ) {
+          val rotationModifier = if (collapsed) {
+            Modifier.rotate(270f)
+          } else {
+            Modifier.rotate(90f)
+          }
+
+          KurobaComposeIcon(
+            modifier = rotationModifier,
+            drawableId = R.drawable.ic_chevron_left_black_24dp
+          )
+        }
+      }
+    }
   }
 }

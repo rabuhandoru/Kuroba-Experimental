@@ -19,8 +19,9 @@ import com.github.k1rakishou.chan.core.manager.ChanThreadManager;
 import com.github.k1rakishou.chan.core.manager.PostFilterHighlightManager;
 import com.github.k1rakishou.chan.core.manager.PostFilterManager;
 import com.github.k1rakishou.chan.core.manager.PrefetchStateManager;
+import com.github.k1rakishou.chan.core.manager.ThirdEyeManager;
 import com.github.k1rakishou.chan.core.manager.ThreadDownloadManager;
-import com.github.k1rakishou.chan.features.thirdeye.ThirdEyeManager;
+import com.github.k1rakishou.common.AppConstants;
 import com.github.k1rakishou.core_logger.Logger;
 import com.github.k1rakishou.model.repository.MediaServiceLinkExtraContentRepository;
 
@@ -59,6 +60,7 @@ public class LoaderModule {
     @Provides
     @Singleton
     public ThirdEyeLoader provideThirdEyeLoader(
+            AppConstants appConstants,
             Lazy<ThirdEyeManager> thirdEyeManager,
             Lazy<ChanThreadManager> chanThreadManager,
             Lazy<ProxiedOkHttpClient> proxiedOkHttpClient
@@ -66,6 +68,7 @@ public class LoaderModule {
         Logger.deps("ThirdEyeLoader");
 
         return new ThirdEyeLoader(
+                appConstants,
                 thirdEyeManager,
                 chanThreadManager,
                 proxiedOkHttpClient

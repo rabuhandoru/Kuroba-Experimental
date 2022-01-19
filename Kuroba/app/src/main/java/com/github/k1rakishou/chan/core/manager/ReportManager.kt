@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Build
 import com.github.k1rakishou.ChanSettings
 import com.github.k1rakishou.chan.BuildConfig
+import com.github.k1rakishou.chan.Chan
 import com.github.k1rakishou.chan.core.base.SerializedCoroutineExecutor
 import com.github.k1rakishou.chan.core.base.okhttp.ProxiedOkHttpClient
 import com.github.k1rakishou.chan.features.issues.ReportFile
@@ -34,6 +35,8 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.joda.time.Duration
+import org.joda.time.format.PeriodFormatterBuilder
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.*
@@ -297,6 +300,40 @@ class ReportManager(
     }
   }
 
+  fun sendComment(
+    issueNumber: Int,
+    description: String,
+    logs: String?,
+    onReportSendResult: (ModularResult<Unit>) -> Unit
+  ) {
+    require(description.isNotEmpty() || logs != null) { "description is empty" }
+    require(description.length <= MAX_DESCRIPTION_LENGTH) { "description is too long ${description.length}" }
+    logs?.let { require(it.length <= MAX_LOGS_LENGTH) { "logs are too long" } }
+
+    serializedCoroutineExecutor.post {
+      val body = buildString(8192) {
+        appendLine(description)
+
+        if (logs.isNotNullNorEmpty()) {
+          append("```")
+          append(logs)
+          append("```")
+        }
+      }
+
+      val request = ReportRequest.comment(
+        body = body
+      )
+
+      val result = sendInternal(
+        reportRequest = request,
+        issueNumber = issueNumber
+      )
+
+      withContext(Dispatchers.Main) { onReportSendResult.invoke(result) }
+    }
+  }
+
   fun sendReport(
     title: String,
     description: String,
@@ -341,6 +378,8 @@ class ReportManager(
       return
     }
 
+    Logger.d(TAG, "deleteOldAnrReports() found ${prevAnrs.size} anrs, toDelete=${toDelete}")
+
     val oldestAnrFilesToDelete = prevAnrs.map { prevAnrFile ->
       val matcher = ANR_EXTRACT_TIME_PATTERN.matcher(prevAnrFile.name)
       if (!matcher.find()) {
@@ -369,6 +408,8 @@ class ReportManager(
     if (toDelete <= 0) {
       return
     }
+
+    Logger.d(TAG, "deleteOldCrashlogs() found ${prevCrashlogs.size} crashlogs, toDelete=${toDelete}")
 
     val oldestCrashlogFilesToDelete = prevCrashlogs.map { prevCrashlogFile ->
       val matcher = CRASHLOG_EXTRACT_TIME_PATTERN.matcher(prevCrashlogFile.name)
@@ -424,7 +465,7 @@ class ReportManager(
   }
 
   fun getReportFooter(): String {
-    return buildString(capacity = 512) {
+    return buildString(capacity = 2048) {
       appendLine("------------------------------")
       appendLine("Android API Level: " + Build.VERSION.SDK_INT)
       appendLine("App Version: " + BuildConfig.VERSION_NAME)
@@ -433,6 +474,7 @@ class ReportManager(
       appendLine("Flavor type: " + AppModuleAndroidUtils.getFlavorType().name)
       appendLine("isLowRamDevice: ${ChanSettings.isLowRamDevice()}, isLowRamDeviceForced: ${ChanSettings.isLowRamDeviceForced.get()}")
       appendLine("MemoryClass: ${activityManager?.memoryClass}")
+      appendLine("App running time: ${formatAppRunningTime()}")
       appendLine("------------------------------")
       appendLine("Current layout mode: ${ChanSettings.getCurrentLayoutMode().name}")
       appendLine("Board view mode: ${ChanSettings.boardPostViewMode.get()}")
@@ -478,6 +520,15 @@ class ReportManager(
 
       appendLine("------------------------------")
     }
+  }
+
+  private fun formatAppRunningTime(): String {
+    val time = ((appContext as? Chan)?.appRunningTime) ?: -1L
+    if (time <= 0) {
+      return "Unknown (appContext=${appContext::class.java.simpleName}), time ms: $time"
+    }
+
+    return appRunningTimeFormatter.print(Duration.millis(time).toPeriod())
   }
 
   private fun createReportRequest(reportFile: ReportFile): ReportRequestWithFile? {
@@ -542,7 +593,7 @@ class ReportManager(
     return success
   }
 
-  private suspend fun sendInternal(reportRequest: ReportRequest): ModularResult<Unit> {
+  private suspend fun sendInternal(reportRequest: ReportRequest, issueNumber: Int? = null): ModularResult<Unit> {
     BackgroundUtils.ensureBackgroundThread()
 
     return ModularResult.Try {
@@ -553,7 +604,11 @@ class ReportManager(
         throw error
       }
 
-      val reportUrl = "https://api.github.com/repos/kurobaexreports/reports/issues"
+      val reportUrl = if (issueNumber != null) {
+        "https://api.github.com/repos/kurobaexreports/reports/issues/${issueNumber}/comments"
+      } else {
+        "https://api.github.com/repos/kurobaexreports/reports/issues"
+      }
       val requestBody = json.toRequestBody("application/json".toMediaType())
 
       val request = Request.Builder()
@@ -598,7 +653,7 @@ class ReportManager(
 
   data class ReportRequest(
     @SerializedName("title")
-    val title: String,
+    val title: String?,
     @SerializedName("body")
     val body: String,
     @SerializedName("labels")
@@ -620,6 +675,14 @@ class ReportManager(
           title = title,
           body = body,
           labels = listOf("New", "Report")
+        )
+      }
+
+      fun comment(body: String): ReportRequest {
+        return ReportRequest(
+          title = null,
+          body = body,
+          labels = emptyList()
         )
       }
 
@@ -654,6 +717,18 @@ class ReportManager(
     const val MAX_TITLE_LENGTH = 512
     const val MAX_DESCRIPTION_LENGTH = 8192
     const val MAX_LOGS_LENGTH = 65535
+
+    private val appRunningTimeFormatter = PeriodFormatterBuilder()
+      .printZeroAlways()
+      .minimumPrintedDigits(2)
+      .appendHours()
+      .appendSuffix(":")
+      .appendMinutes()
+      .appendSuffix(":")
+      .appendSeconds()
+      .appendSuffix(".")
+      .appendMillis3Digit()
+      .toFormatter()
   }
 
 }

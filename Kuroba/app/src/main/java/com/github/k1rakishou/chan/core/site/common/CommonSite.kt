@@ -87,7 +87,7 @@ abstract class CommonSite : SiteBase() {
   }
 
   private val defaultRequestModifier by lazy {
-    object : SiteRequestModifier<Site>(this, appConstants) {
+    object : SiteRequestModifier<Site>(this@CommonSite, appConstants) {
       // Default implementation.
     }
   }
@@ -555,9 +555,11 @@ abstract class CommonSite : SiteBase() {
       requestProvider: () -> AbstractRequest<List<ChanBoard>>,
       defaultBoardsProvider: () -> List<ChanBoard>
     ): ModularResult<SiteBoards> {
-      return requestProvider().execute()
-        .mapValue { boardsList -> SiteBoards(site.siteDescriptor(), boardsList) }
-        .mapErrorToValue { ModularResult.value(SiteBoards(site.siteDescriptor(), defaultBoardsProvider())) }
+      return ModularResult.Try {
+        return@Try requestProvider().execute()
+          .mapValue { boardsList -> SiteBoards(site.siteDescriptor(), boardsList) }
+          .mapErrorToValue { SiteBoards(site.siteDescriptor(), defaultBoardsProvider()) }
+      }
     }
     
     override suspend fun pages(

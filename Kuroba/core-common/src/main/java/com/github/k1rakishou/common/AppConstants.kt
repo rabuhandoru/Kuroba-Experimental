@@ -3,6 +3,7 @@ package com.github.k1rakishou.common
 import android.app.ActivityManager
 import android.content.Context
 import android.os.Build
+import android.os.Debug
 import android.webkit.WebSettings
 import com.github.k1rakishou.core_logger.Logger
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -22,9 +23,13 @@ open class AppConstants(
   val userAgent: String
   val processorsCount: Int
   val proxiesFileName = PROXIES_FILE_NAME
+  val thirdEyeSettingsFileName = THIRD_EYE_SETTINGS_FILE_NAME
   val bookmarkWatchWorkUniqueTag = "BookmarkWatcherController_${flavorType.name}"
   val filterWatchWorkUniqueTag = "FilterWatcherController_${flavorType.name}"
   val threadDownloadWorkUniqueTag = "ThreadDownloadController_${flavorType.name}"
+
+  val isDebuggerAttached: Boolean
+    get() = Debug.isDebuggerConnected()
 
   // 128MB
   val exoPlayerDiskCacheMaxSize = 128L * 1024 * 1024
@@ -130,7 +135,6 @@ open class AppConstants(
       return field
     }
 
-
   val mpvCertDir: File
     get() {
       if (field.exists()) {
@@ -227,6 +231,8 @@ open class AppConstants(
       "Mozilla/5.0 (Linux; Android %s; %s) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.127 Mobile Safari/537.36"
 
     private const val PROXIES_FILE_NAME = "kuroba_proxies.json"
+    private const val THIRD_EYE_SETTINGS_FILE_NAME = "third_eye_settings.json"
+
     private const val REPLY_DRAFTS_DIR_NAME = "reply_drafts"
     private const val ATTACH_FILES_DIR_NAME = "attach_files"
     private const val ATTACH_FILES_META_DIR_NAME = "attach_files_meta"

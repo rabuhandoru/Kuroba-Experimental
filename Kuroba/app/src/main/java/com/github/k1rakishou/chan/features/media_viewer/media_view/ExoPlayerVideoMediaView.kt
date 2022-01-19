@@ -18,6 +18,7 @@ import com.github.k1rakishou.chan.features.media_viewer.MediaLocation
 import com.github.k1rakishou.chan.features.media_viewer.MediaViewerControllerViewModel
 import com.github.k1rakishou.chan.features.media_viewer.ViewableMedia
 import com.github.k1rakishou.chan.features.media_viewer.helper.CloseMediaActionHelper
+import com.github.k1rakishou.chan.features.media_viewer.helper.ExoPlayerCustomPlayerControlView
 import com.github.k1rakishou.chan.features.media_viewer.helper.ExoPlayerCustomPlayerView
 import com.github.k1rakishou.chan.features.media_viewer.helper.ExoPlayerWrapper
 import com.github.k1rakishou.chan.features.media_viewer.strip.MediaViewerActionStrip
@@ -54,15 +55,16 @@ class ExoPlayerVideoMediaView(
   override val viewableMedia: ViewableMedia.Video,
   override val pagerPosition: Int,
   override val totalPageItemsCount: Int,
-) : MediaView<ViewableMedia.Video, ExoPlayerVideoMediaView.VideoMediaViewState>(
-  context = context,
-  attributeSet = null,
-  mediaViewContract = mediaViewContract,
-  mediaViewState = initialMediaViewState,
-  cachedHttpDataSourceFactory = cachedHttpDataSourceFactory,
-  fileDataSourceFactory = fileDataSourceFactory,
-  contentDataSourceFactory = contentDataSourceFactory,
-) {
+) : ExoPlayerCustomPlayerControlView.VideoMediaViewCallbacks,
+  MediaView<ViewableMedia.Video, ExoPlayerVideoMediaView.VideoMediaViewState>(
+    context = context,
+    attributeSet = null,
+    mediaViewContract = mediaViewContract,
+    mediaViewState = initialMediaViewState,
+    cachedHttpDataSourceFactory = cachedHttpDataSourceFactory,
+    fileDataSourceFactory = fileDataSourceFactory,
+    contentDataSourceFactory = contentDataSourceFactory,
+  ) {
 
   private val thumbnailMediaView: ThumbnailMediaView
   private val actualVideoPlayerView: ExoPlayerCustomPlayerView
@@ -116,7 +118,7 @@ class ExoPlayerVideoMediaView(
     }
 
     val placeholderView = findViewById<FrameLayout>(R.id.view_player_controls_placeholder)
-    actualVideoPlayerView.setControllerPlaceholderView(placeholderView)
+    actualVideoPlayerView.setControllerPlaceholderView(placeholderView, this)
 
     muteUnmuteButton = findViewById(R.id.exo_mute)
     muteUnmuteButton.setEnabledFast(false)
@@ -370,6 +372,12 @@ class ExoPlayerVideoMediaView(
   }
 
   override fun onInsetsChanged() {
+  }
+
+  override fun initializePlayerAndStartPlaying() {
+    if (preloadingJob == null) {
+      preloadingJob = startFullVideoPreloading(viewableMedia.mediaLocation)
+    }
   }
 
   private fun playerControlsHeight(): Int {

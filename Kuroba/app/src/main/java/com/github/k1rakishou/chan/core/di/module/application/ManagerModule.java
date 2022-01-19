@@ -67,13 +67,9 @@ import com.github.k1rakishou.chan.core.manager.SavedReplyManager;
 import com.github.k1rakishou.chan.core.manager.SeenPostsManager;
 import com.github.k1rakishou.chan.core.manager.SettingsNotificationManager;
 import com.github.k1rakishou.chan.core.manager.SiteManager;
+import com.github.k1rakishou.chan.core.manager.ThirdEyeManager;
 import com.github.k1rakishou.chan.core.manager.ThreadBookmarkGroupManager;
 import com.github.k1rakishou.chan.core.manager.ThreadDownloadManager;
-import com.github.k1rakishou.chan.core.manager.watcher.BookmarkForegroundWatcher;
-import com.github.k1rakishou.chan.core.manager.watcher.BookmarkWatcherCoordinator;
-import com.github.k1rakishou.chan.core.manager.watcher.BookmarkWatcherDelegate;
-import com.github.k1rakishou.chan.core.manager.watcher.FilterWatcherCoordinator;
-import com.github.k1rakishou.chan.core.manager.watcher.FilterWatcherDelegate;
 import com.github.k1rakishou.chan.core.site.ParserRepository;
 import com.github.k1rakishou.chan.core.site.SiteRegistry;
 import com.github.k1rakishou.chan.core.site.SiteResolver;
@@ -87,11 +83,15 @@ import com.github.k1rakishou.chan.core.usecase.GetThreadBookmarkGroupIdsUseCase;
 import com.github.k1rakishou.chan.core.usecase.ParsePostRepliesUseCase;
 import com.github.k1rakishou.chan.core.usecase.ThreadDataPreloader;
 import com.github.k1rakishou.chan.core.usecase.ThreadDownloaderPersistPostsInDatabaseUseCase;
+import com.github.k1rakishou.chan.core.watcher.BookmarkForegroundWatcher;
+import com.github.k1rakishou.chan.core.watcher.BookmarkWatcherCoordinator;
+import com.github.k1rakishou.chan.core.watcher.BookmarkWatcherDelegate;
+import com.github.k1rakishou.chan.core.watcher.FilterWatcherCoordinator;
+import com.github.k1rakishou.chan.core.watcher.FilterWatcherDelegate;
 import com.github.k1rakishou.chan.features.image_saver.ImageSaverV2ServiceDelegate;
 import com.github.k1rakishou.chan.features.posting.LastReplyRepository;
 import com.github.k1rakishou.chan.features.posting.PostingServiceDelegate;
 import com.github.k1rakishou.chan.features.posting.solvers.two_captcha.TwoCaptchaSolver;
-import com.github.k1rakishou.chan.features.thirdeye.ThirdEyeManager;
 import com.github.k1rakishou.chan.features.thread_downloading.ThreadDownloadProgressNotifier;
 import com.github.k1rakishou.chan.features.thread_downloading.ThreadDownloadingCoordinator;
 import com.github.k1rakishou.chan.features.thread_downloading.ThreadDownloadingDelegate;
@@ -100,6 +100,7 @@ import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils;
 import com.github.k1rakishou.common.AppConstants;
 import com.github.k1rakishou.core_logger.Logger;
 import com.github.k1rakishou.core_themes.ThemeEngine;
+import com.github.k1rakishou.fsaf.FileManager;
 import com.github.k1rakishou.model.repository.BoardRepository;
 import com.github.k1rakishou.model.repository.BookmarksRepository;
 import com.github.k1rakishou.model.repository.ChanFilterRepository;
@@ -121,7 +122,8 @@ import com.github.k1rakishou.model.source.cache.thread.ChanThreadsCache;
 import com.google.gson.Gson;
 import com.squareup.moshi.Moshi;
 
-import java.util.HashSet;
+import java.util.ArrayList;
+import java.util.List;
 
 import javax.inject.Singleton;
 
@@ -257,6 +259,7 @@ public class ManagerModule {
     @Singleton
     public OnDemandContentLoaderManager provideOnDemandContentLoader(
             CoroutineScope appScope,
+            AppConstants appConstants,
             Lazy<PrefetchLoader> prefetchLoader,
             Lazy<PostExtraContentLoader> postExtraContentLoader,
             Lazy<Chan4CloudFlareImagePreloader> chan4CloudFlareImagePreloader,
@@ -265,10 +268,14 @@ public class ManagerModule {
             ChanThreadManager chanThreadManager
     ) {
         Logger.deps("OnDemandContentLoaderManager");
-        kotlin.Lazy<HashSet<OnDemandContentLoader>> loadersLazy = kotlin.LazyKt.lazy(
+        kotlin.Lazy<List<OnDemandContentLoader>> loadersLazy = kotlin.LazyKt.lazy(
                 LazyThreadSafetyMode.SYNCHRONIZED,
                 () -> {
-                    HashSet<OnDemandContentLoader> loaders = new HashSet<>();
+                    List<OnDemandContentLoader> loaders = new ArrayList<>();
+
+                    // Order matters! Loaders at the beginning of the list will be executed first.
+                    // If a loader depends on the results of another loader then add it before
+                    // the other loader.
                     loaders.add(chan4CloudFlareImagePreloader.get());
                     loaders.add(prefetchLoader.get());
                     loaders.add(postExtraContentLoader.get());
@@ -280,6 +287,7 @@ public class ManagerModule {
 
         return new OnDemandContentLoaderManager(
                 appScope,
+                appConstants,
                 Dispatchers.getDefault(),
                 loadersLazy,
                 chanThreadManager
@@ -900,13 +908,21 @@ public class ManagerModule {
     @Singleton
     @Provides
     public ThirdEyeManager provideThirdEyeManager(
-            ChanThreadsCache chanThreadsCache
+            Context appContext,
+            ChanThreadsCache chanThreadsCache,
+            AppConstants appConstants,
+            Moshi moshi,
+            FileManager fileManager
     ) {
         Logger.deps("ThirdEyeManager");
 
         return new ThirdEyeManager(
+                appContext,
                 ChanSettings.verboseLogs.get(),
-                chanThreadsCache
+                appConstants,
+                moshi,
+                chanThreadsCache,
+                fileManager
         );
     }
 

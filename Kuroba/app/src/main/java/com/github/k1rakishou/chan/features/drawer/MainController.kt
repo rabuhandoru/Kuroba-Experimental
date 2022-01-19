@@ -157,7 +157,6 @@ import com.github.k1rakishou.model.data.descriptor.ChanDescriptor
 import dagger.Lazy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -693,8 +692,7 @@ class MainController(
       val topController = currentNavController.top
         ?: return
 
-      // Closing any "floating" controllers like ImageViewController
-      closeAllFloatingControllers(topController.childControllers)
+      closeAllChildControllers(topController.childControllers)
 
       if (topController is HasNavigation) {
         return
@@ -1097,7 +1095,6 @@ class MainController(
                 .fillMaxWidth()
                 .padding(start = 4.dp, end = 4.dp, top = 8.dp),
               chanTheme = chanTheme,
-              themeEngine = themeEngine,
               onBackgroundColor = backgroundColor,
               searchQueryState = searchQuery,
               onSearchQueryChanged = onSearchQueryChanged
@@ -1108,7 +1105,6 @@ class MainController(
 
           KurobaComposeIcon(
             drawableId = R.drawable.ic_baseline_wb_sunny_24,
-            themeEngine = themeEngine,
             modifier = Modifier
               .align(Alignment.CenterVertically)
               .kurobaClickable(onClick = onSwitchDayNightThemeIconClick),
@@ -1119,7 +1115,6 @@ class MainController(
 
           KurobaComposeIcon(
             drawableId = R.drawable.ic_more_vert_white_24dp,
-            themeEngine = themeEngine,
             modifier = Modifier
               .align(Alignment.CenterVertically)
               .kurobaClickable(onClick = onShowDrawerOptionsIconClick),
@@ -1925,12 +1920,12 @@ class MainController(
     popChildController(false)
   }
 
-  private fun closeAllFloatingControllers(childControllers: List<Controller>) {
+  private fun closeAllChildControllers(childControllers: List<Controller>) {
     for (childController in childControllers) {
       childController.presentingThisController?.stopPresenting(false)
 
       if (childController.childControllers.isNotEmpty()) {
-        closeAllFloatingControllers(childController.childControllers)
+        closeAllChildControllers(childController.childControllers)
       }
     }
   }
