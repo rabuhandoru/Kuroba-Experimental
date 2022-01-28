@@ -45,7 +45,7 @@ class DvachCommentParser : VichanCommentParser(), ICommentParser {
       return handleExternalLink(post, callback, text, boardCode, threadNo, postNo)
     }
 
-    return handleInternalLink(callback, text, postNo)
+    return handleInternalLink(post, callback, text, postNo)
   }
 
   private fun handleNotQuote(
@@ -90,12 +90,23 @@ class DvachCommentParser : VichanCommentParser(), ICommentParser {
     }
 
     // Append (You) when it's a reply to a saved reply, (Me) if it's a self reply
-    if (callback.isSaved(postNo, postSubNo)) {
+    if (callback.isSaved(post.opId, postNo, postSubNo)) {
       if (post.isSavedReply) {
         handlerLink.key = TextUtils.concat(handlerLink.key, CommentParserConstants.SAVED_REPLY_SELF_SUFFIX)
       } else {
         handlerLink.key = TextUtils.concat(handlerLink.key, CommentParserConstants.SAVED_REPLY_OTHER_SUFFIX)
       }
+    }
+
+    val hiddenOrRemoved = callback.isHiddenOrRemoved(post.opId, postNo, postSubNo)
+    if (hiddenOrRemoved != PostParser.NORMAL_POST) {
+      val suffix = if (hiddenOrRemoved == PostParser.HIDDEN_POST) {
+        CommentParserConstants.HIDDEN_POST_SUFFIX
+      } else {
+        CommentParserConstants.REMOVED_POST_SUFFIX
+      }
+
+      handlerLink.key = TextUtils.concat(handlerLink.key, suffix)
     }
   }
 
@@ -121,15 +132,26 @@ class DvachCommentParser : VichanCommentParser(), ICommentParser {
   }
 
   private fun handleInternalLink(
+    post: ChanPostBuilder,
     callback: PostParser.Callback,
     text: CharSequence,
     postNo: Long
   ): PostLinkable.Link {
-    if (callback.isInternal(postNo)) {
-      return PostLinkable.Link(PostLinkable.Type.QUOTE, text, PostLinkable.Value.LongValue(postNo))
+    if (!callback.isInternal(postNo)) {
+      return PostLinkable.Link(PostLinkable.Type.DEAD, text, PostLinkable.Value.LongValue(postNo))
     }
 
-    return PostLinkable.Link(PostLinkable.Type.DEAD, text, PostLinkable.Value.LongValue(postNo))
+    when (callback.isHiddenOrRemoved(post.opId, postNo, 0)) {
+      PostParser.HIDDEN_POST,
+      PostParser.REMOVED_POST -> {
+        // Quote pointing to a (locally) hidden or removed post
+        return PostLinkable.Link(PostLinkable.Type.QUOTE_TO_HIDDEN_OR_REMOVED_POST, text, PostLinkable.Value.LongValue(postNo))
+      }
+      else -> {
+        // Normal post quote
+        return PostLinkable.Link(PostLinkable.Type.QUOTE, text, PostLinkable.Value.LongValue(postNo))
+      }
+    }
   }
 
   @Suppress("SameParameterValue")

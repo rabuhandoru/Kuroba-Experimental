@@ -2,6 +2,7 @@ package com.github.k1rakishou.chan.ui.controller;
 
 import static android.view.View.GONE;
 import static android.view.View.VISIBLE;
+import static com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.getString;
 import static com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.inflate;
 
 import android.content.Context;
@@ -31,6 +32,7 @@ import com.github.k1rakishou.core_logger.Logger;
 import com.github.k1rakishou.core_themes.ThemeEngine;
 import com.github.k1rakishou.model.data.descriptor.PostDescriptor;
 import com.github.k1rakishou.model.data.post.ChanPost;
+import com.github.k1rakishou.model.data.post.ChanPostHide;
 import com.github.k1rakishou.model.data.post.ChanPostImage;
 
 import org.jetbrains.annotations.NotNull;
@@ -39,11 +41,14 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 import javax.inject.Inject;
 
+import coil.request.Disposable;
 import okhttp3.HttpUrl;
 
 public class RemovedPostsController
@@ -118,19 +123,22 @@ public class RemovedPostsController
         return true;
     }
 
-    public void showRemovePosts(List<ChanPost> removedPosts) {
+    public void showRemovePosts(List<RemovedPostsHelper.HiddenOrRemovedPost> removedPosts) {
         BackgroundUtils.ensureMainThread();
 
-        RemovedPost[] removedPostsArray = new RemovedPost[removedPosts.size()];
+        HiddenOrRemovedPost[] hiddenOrRemovedPosts = new HiddenOrRemovedPost[removedPosts.size()];
 
         for (int i = 0, removedPostsSize = removedPosts.size(); i < removedPostsSize; i++) {
-            ChanPost post = removedPosts.get(i);
+            ChanPost post = removedPosts.get(i).getChanPost();
+            ChanPostHide postHide = removedPosts.get(i).getChanPostHide();
 
-            removedPostsArray[i] = new RemovedPost(
+            hiddenOrRemovedPosts[i] = new HiddenOrRemovedPost(
                     post.getPostImages(),
                     post.getPostDescriptor(),
                     post.getPostComment().comment(),
-                    false
+                    false,
+                    postHide.getOnlyHide(),
+                    postHide.getManuallyRestored()
             );
         }
 
@@ -145,7 +153,7 @@ public class RemovedPostsController
             postsListView.setAdapter(adapter);
         }
 
-        adapter.setRemovedPosts(removedPostsArray);
+        adapter.setRemovedPosts(hiddenOrRemovedPosts);
     }
 
     @Override
@@ -174,22 +182,28 @@ public class RemovedPostsController
         removedPostsHelper.onRestoreClicked(selectedPosts);
     }
 
-    public static class RemovedPost {
+    public static class HiddenOrRemovedPost {
         private List<ChanPostImage> images;
         private PostDescriptor postDescriptor;
         private CharSequence comment;
         private boolean checked;
+        private boolean isHidden;
+        private boolean manuallyRestored;
 
-        public RemovedPost(
+        public HiddenOrRemovedPost(
                 List<ChanPostImage> images,
                 PostDescriptor postDescriptor,
                 CharSequence comment,
-                boolean checked
+                boolean checked,
+                boolean isHidden,
+                boolean manuallyRestored
         ) {
             this.images = images;
             this.postDescriptor = postDescriptor;
             this.comment = comment;
             this.checked = checked;
+            this.isHidden = isHidden;
+            this.manuallyRestored = manuallyRestored;
         }
 
         public void setChecked(boolean checked) {
@@ -213,10 +227,12 @@ public class RemovedPostsController
         }
     }
 
-    public static class RemovedPostAdapter extends ArrayAdapter<RemovedPost> {
+    public static class RemovedPostAdapter extends ArrayAdapter<HiddenOrRemovedPost> {
         private ImageLoaderV2 imageLoaderV2;
         private ThemeEngine themeEngine;
-        private List<RemovedPost> removedPostsCopy = new ArrayList<>();
+        private List<HiddenOrRemovedPost> hiddenOrRemovedPosts = new ArrayList<>();
+
+        private Map<PostDescriptor, Disposable> activeImageLoadRequests = new HashMap<>();
 
         public RemovedPostAdapter(
                 @NonNull Context context,
@@ -230,19 +246,26 @@ public class RemovedPostsController
             this.themeEngine = themeEngine;
         }
 
+        @Override
+        public boolean hasStableIds() {
+            return true;
+        }
+
+        @Override
+        public long getItemId(int position) {
+            return hiddenOrRemovedPosts.get(position).postDescriptor.hashCode();
+        }
+
         @NonNull
         @Override
         public View getView(int position, @Nullable View convertView, @NonNull ViewGroup parent) {
-            RemovedPost removedPost = getItem(position);
-
-            if (removedPost == null) {
-                throw new RuntimeException(
-                        "removedPost is null! position = " + position + ", items count = " + getCount());
+            HiddenOrRemovedPost hiddenOrRemovedPost = getItem(position);
+            if (hiddenOrRemovedPost == null) {
+                throw new RuntimeException("removedPost is null! position = " + position + ", items count = " + getCount());
             }
 
-            if (convertView == null) {
-                convertView = inflate(getContext(), R.layout.layout_removed_post, parent, false);
-            }
+            PostDescriptor postDescriptor = hiddenOrRemovedPost.postDescriptor;
+            convertView = inflate(getContext(), R.layout.layout_removed_post, parent, false);
 
             LinearLayout viewHolder = convertView.findViewById(R.id.removed_post_view_holder);
             AppCompatTextView postNo = convertView.findViewById(R.id.removed_post_no);
@@ -253,21 +276,42 @@ public class RemovedPostsController
             postNo.setTextColor(themeEngine.getChanTheme().getTextColorPrimary());
             postComment.setTextColor(themeEngine.getChanTheme().getTextColorPrimary());
 
-            postNo.setText(String.format(Locale.ENGLISH, "No. %d", removedPost.postDescriptor.getPostNo()));
-            postComment.setText(removedPost.comment);
-            checkbox.setChecked(removedPost.isChecked());
-            postImage.setVisibility(GONE);
+            StringBuilder additionalPostHideInfo = formatAdditionalPostHideInfo(hiddenOrRemovedPost);
 
-            if (removedPost.images.size() > 0) {
-                ChanPostImage image = removedPost.getImages().get(0);
+            String postNoFormatted = String.format(
+                    Locale.ENGLISH,
+                    "%s\nNo. %d",
+                    additionalPostHideInfo.toString(),
+                    hiddenOrRemovedPost.postDescriptor.getPostNo()
+            );
+
+            postNo.setText(postNoFormatted);
+
+            postComment.setText(hiddenOrRemovedPost.comment);
+            checkbox.setChecked(hiddenOrRemovedPost.isChecked());
+
+            Disposable activeRequestDisposable = activeImageLoadRequests.remove(postDescriptor);
+            if (activeRequestDisposable != null && !activeRequestDisposable.isDisposed()) {
+                activeRequestDisposable.dispose();
+            }
+
+            if (hiddenOrRemovedPost.images.size() > 0) {
+                ChanPostImage image = hiddenOrRemovedPost.getImages().get(0);
                 HttpUrl thumbnailUrl = image.getThumbnailUrl();
 
                 if (thumbnailUrl != null) {
                     // load only the first image
                     postImage.setVisibility(VISIBLE);
 
-                    loadImage(postImage, thumbnailUrl);
+                    Disposable disposable = loadImage(postImage, thumbnailUrl);
+                    activeImageLoadRequests.put(postDescriptor, disposable);
+                } else {
+                    postImage.setImageBitmap(null);
+                    postImage.setVisibility(GONE);
                 }
+            } else {
+                postImage.setImageBitmap(null);
+                postImage.setVisibility(GONE);
             }
 
             checkbox.setOnClickListener(v -> onItemClick(position));
@@ -276,7 +320,36 @@ public class RemovedPostsController
             return convertView;
         }
 
-        private void loadImage(AppCompatImageView postImage, HttpUrl thumbnailUrl) {
+        @NonNull
+        private StringBuilder formatAdditionalPostHideInfo(HiddenOrRemovedPost hiddenOrRemovedPost) {
+            StringBuilder additionalPostHideInfo = new StringBuilder();
+            additionalPostHideInfo.append("(");
+
+            if (!hiddenOrRemovedPost.manuallyRestored) {
+                if (hiddenOrRemovedPost.isHidden) {
+                    additionalPostHideInfo.append(getString(R.string.hidden_or_removed_posts_post_hidden));
+                } else {
+                    additionalPostHideInfo.append(getString(R.string.hidden_or_removed_posts_post_removed));
+                }
+            } else {
+                // we are checking additionalPostHideInfo's length to be greater than 1 because
+                // we always insert the "(" at the very beginning
+                if (additionalPostHideInfo.length() > 1) {
+                    additionalPostHideInfo.append(", ");
+                }
+
+                additionalPostHideInfo.append(getString(R.string.hidden_or_removed_posts_post_manually_restored));
+            }
+
+            additionalPostHideInfo.append(")");
+
+            return additionalPostHideInfo;
+        }
+
+        private Disposable loadImage(
+                AppCompatImageView postImage,
+                HttpUrl thumbnailUrl
+        ) {
             ImageLoaderV2.FailureAwareImageListener listener = new ImageLoaderV2.FailureAwareImageListener() {
                 @Override
                 public void onResponse(@NotNull BitmapDrawable drawable, boolean isImmediate) {
@@ -291,11 +364,13 @@ public class RemovedPostsController
                 @Override
                 public void onResponseError(@NotNull Throwable error) {
                     Logger.e(TAG, "Error while trying to download post image", error);
+
+                    postImage.setImageBitmap(null);
                     postImage.setVisibility(GONE);
                 }
             };
 
-            imageLoaderV2.loadFromNetwork(
+            return imageLoaderV2.loadFromNetwork(
                     getContext(),
                     thumbnailUrl.toString(),
                     CacheFileType.PostMediaThumbnail,
@@ -310,34 +385,34 @@ public class RemovedPostsController
         }
 
         public void onItemClick(int position) {
-            RemovedPost rp = getItem(position);
-            if (rp == null) {
+            HiddenOrRemovedPost hiddenOrRemovedPost = getItem(position);
+            if (hiddenOrRemovedPost == null) {
                 return;
             }
 
-            rp.setChecked(!rp.isChecked());
-            removedPostsCopy.get(position).setChecked(rp.isChecked());
+            hiddenOrRemovedPost.setChecked(!hiddenOrRemovedPost.isChecked());
+            hiddenOrRemovedPosts.get(position).setChecked(hiddenOrRemovedPost.isChecked());
 
             notifyDataSetChanged();
         }
 
-        public void setRemovedPosts(RemovedPost[] removedPostsArray) {
-            removedPostsCopy.clear();
-            removedPostsCopy.addAll(Arrays.asList(removedPostsArray));
+        public void setRemovedPosts(HiddenOrRemovedPost[] hiddenOrRemovedPosts) {
+            this.hiddenOrRemovedPosts.clear();
+            this.hiddenOrRemovedPosts.addAll(Arrays.asList(hiddenOrRemovedPosts));
 
             clear();
-            addAll(removedPostsCopy);
+            addAll(this.hiddenOrRemovedPosts);
             notifyDataSetChanged();
         }
 
         public List<PostDescriptor> getSelectedPostDescriptorList() {
             List<PostDescriptor> selectedPosts = new ArrayList<>();
 
-            for (RemovedPost removedPost : removedPostsCopy) {
-                if (removedPost == null) continue;
+            for (HiddenOrRemovedPost hiddenOrRemovedPost : hiddenOrRemovedPosts) {
+                if (hiddenOrRemovedPost == null) continue;
 
-                if (removedPost.isChecked()) {
-                    selectedPosts.add(removedPost.getPostDescriptor());
+                if (hiddenOrRemovedPost.isChecked()) {
+                    selectedPosts.add(hiddenOrRemovedPost.getPostDescriptor());
                 }
             }
 
@@ -345,22 +420,22 @@ public class RemovedPostsController
         }
 
         public void selectAll() {
-            if (removedPostsCopy.isEmpty()) {
+            if (hiddenOrRemovedPosts.isEmpty()) {
                 return;
             }
 
             // If first item is selected - unselect all other items
             // If it's not selected - select all other items
-            boolean select = !removedPostsCopy.get(0).isChecked();
+            boolean select = !hiddenOrRemovedPosts.get(0).isChecked();
 
-            for (int i = 0; i < removedPostsCopy.size(); ++i) {
-                RemovedPost rp = getItem(i);
-                if (rp == null) {
+            for (int i = 0; i < hiddenOrRemovedPosts.size(); ++i) {
+                HiddenOrRemovedPost hiddenOrRemovedPost = getItem(i);
+                if (hiddenOrRemovedPost == null) {
                     return;
                 }
 
-                rp.setChecked(select);
-                removedPostsCopy.get(i).setChecked(select);
+                hiddenOrRemovedPost.setChecked(select);
+                hiddenOrRemovedPosts.get(i).setChecked(select);
             }
 
             notifyDataSetChanged();

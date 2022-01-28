@@ -19,8 +19,10 @@ package com.github.k1rakishou.chan.ui.adapter
 import com.github.k1rakishou.chan.core.helper.ChanLoadProgressEvent
 import com.github.k1rakishou.chan.core.helper.ChanLoadProgressNotifier
 import com.github.k1rakishou.chan.core.helper.PostHideHelper
+import com.github.k1rakishou.common.mutableListWithCap
 import com.github.k1rakishou.core_logger.Logger
 import com.github.k1rakishou.model.data.descriptor.ChanDescriptor
+import com.github.k1rakishou.model.data.descriptor.PostDescriptor
 import com.github.k1rakishou.model.data.post.ChanOriginalPost
 import com.github.k1rakishou.model.data.post.ChanPost
 import com.github.k1rakishou.model.data.post.PostIndexed
@@ -32,9 +34,11 @@ class PostsFilter(
   private val order: Order
 ) {
 
-  suspend fun applyFilter(chanDescriptor: ChanDescriptor, posts: MutableList<ChanPost>): List<PostIndexed> {
-    val postsCount = posts.size
-
+  suspend fun applyFilter(
+    chanDescriptor: ChanDescriptor,
+    posts: MutableList<ChanPost>,
+    additionalPostsToReparse: MutableSet<PostDescriptor>
+  ): List<PostIndexed> {
     chanLoadProgressNotifier.sendProgressEvent(
       ChanLoadProgressEvent.ApplyingFilters(
         chanDescriptor = chanDescriptor,
@@ -48,21 +52,16 @@ class PostsFilter(
     }
 
     // Process hidden by filter and post/thread hiding
-    val retainedPosts: List<ChanPost> = postHideHelper.filterHiddenPosts(posts)
+    val retainedPosts = postHideHelper.processPostFilters(chanDescriptor, posts, additionalPostsToReparse)
       .safeUnwrap { error ->
         Logger.e(TAG, "postHideHelper.filterHiddenPosts error", error)
         return emptyList()
       }
 
-    Logger.d(TAG, "originalPosts.size=${postsCount}, " +
-      "retainedPosts.size=${retainedPosts.size}, " +
-      "chanDescriptor=$chanDescriptor")
+    val indexedPosts = mutableListWithCap<PostIndexed>(retainedPosts.size)
 
-    val indexedPosts: MutableList<PostIndexed> = ArrayList(retainedPosts.size)
-
-    for (currentPostIndex in retainedPosts.indices) {
-      val retainedPost = retainedPosts[currentPostIndex]
-      indexedPosts.add(PostIndexed(retainedPost, currentPostIndex))
+    for ((index, retainedPost) in retainedPosts.withIndex()) {
+      indexedPosts.add(PostIndexed(retainedPost, index))
     }
 
     return indexedPosts

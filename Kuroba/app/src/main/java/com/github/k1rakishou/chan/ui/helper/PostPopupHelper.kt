@@ -32,7 +32,6 @@ import com.github.k1rakishou.model.data.descriptor.ChanDescriptor.ThreadDescript
 import com.github.k1rakishou.model.data.descriptor.PostDescriptor
 import com.github.k1rakishou.model.data.post.ChanPost
 import com.github.k1rakishou.model.data.post.ChanPostImage
-import com.github.k1rakishou.model.data.post.PostIndexed
 import dagger.Lazy
 import java.util.*
 
@@ -65,9 +64,9 @@ class PostPopupHelper(
   ) {
     val data = PostRepliesPopupController.PostRepliesPopupData(
       descriptor = threadDescriptor,
-      postViewMode = postViewMode,
       forPostWithDescriptor = postDescriptor,
-      posts = indexPosts(posts)
+      postViewMode = postViewMode,
+      posts = posts
     )
 
     val prevPostViewMode = dataQueue.lastOrNull()?.postViewMode
@@ -101,26 +100,6 @@ class PostPopupHelper(
     presentingPostRepliesController?.displayData(chanDescriptor, data)
   }
 
-  private fun indexPosts(posts: List<ChanPost>): List<PostIndexed> {
-    if (posts.isEmpty()) {
-      return emptyList()
-    }
-
-    val postIndexedList: MutableList<PostIndexed> = ArrayList()
-    val threadDescriptor = posts[0].postDescriptor.threadDescriptor()
-
-    chanThreadManager.iteratePostIndexes(
-      threadDescriptor,
-      posts,
-      ChanPost::postDescriptor
-    ) { chanPost: ChanPost, postIndex: Int ->
-      postIndexedList.add(PostIndexed(chanPost, postIndex))
-      Unit
-    }
-
-    return postIndexedList
-  }
-
   fun topOrNull(): PostPopupData? {
     if (dataQueue.isEmpty()) {
       return null
@@ -130,7 +109,27 @@ class PostPopupHelper(
   }
 
   fun resetCachedPostData(postDescriptor: PostDescriptor) {
-    presentingPostRepliesController?.resetCachedPostData(postDescriptor)
+    presentingPostRepliesController?.resetCachedPostData(listOf(postDescriptor))
+  }
+
+  fun resetCachedPostData(postDescriptors: Collection<PostDescriptor>) {
+    presentingPostRepliesController?.resetCachedPostData(postDescriptors)
+  }
+
+  suspend fun onPostsWithDescriptorsUpdated(updatedPostDescriptors: Collection<PostDescriptor>) {
+    BackgroundUtils.ensureMainThread()
+
+    val updatedPosts = chanThreadManager.getPosts(updatedPostDescriptors)
+    if (updatedPosts.isEmpty()) {
+      return
+    }
+
+    onPostsUpdated(updatedPosts)
+  }
+
+  suspend fun updateAllPosts(chanDescriptor: ChanDescriptor) {
+    BackgroundUtils.ensureMainThread()
+    presentingPostRepliesController?.updateAllPosts(chanDescriptor)
   }
 
   suspend fun onPostsUpdated(updatedPosts: List<ChanPost>) {

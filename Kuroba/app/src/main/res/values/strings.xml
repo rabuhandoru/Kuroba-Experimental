@@ -15,9 +15,13 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 -->
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <plurals name="reply">
+    <plurals name="reply_with_number">
         <item quantity="one">%d reply</item>
         <item quantity="other">%d replies</item>
+    </plurals>
+    <plurals name="reply">
+        <item quantity="one">reply</item>
+        <item quantity="other">replies</item>
     </plurals>
     <plurals name="image">
         <item quantity="one">%d image</item>
@@ -125,6 +129,9 @@ Re-enable this permission in the app settings if you permanently disabled it."</
     <string name="seconds">%d seconds</string>
     <string name="minutes">%d minutes</string>
     <string name="hours">%d hours</string>
+
+    <string name="post_reply_hidden">hidden</string>
+    <string name="post_reply_removed">removed</string>
     <string name="card_stats_replies_compact">%1$dR</string>
     <string name="card_stats_images_compact">%1$dI</string>
     <string name="card_stats_page_compact">Pg %1$d</string>
@@ -142,7 +149,7 @@ Re-enable this permission in the app settings if you permanently disabled it."</
 
     <string name="action_reload">Reload</string>
     <string name="action_pin">Bookmark</string>
-    <string name="action_view_removed_posts">View manually removed posts</string>
+    <string name="action_view_removed_posts">View manually hidden/removed posts</string>
     <string name="action_preview_thread_in_archive">Preview in archive</string>
     <string name="action_open_in_archive">Open in archive</string>
     <string name="action_open_browser">Open in a browser</string>
@@ -152,6 +159,7 @@ Re-enable this permission in the app settings if you permanently disabled it."</
     <string name="action_open_media_by_url">Open media (image/video) by url</string>
     <string name="action_share">Share</string>
     <string name="action_board_archive">View board archive</string>
+    <string name="action_view_removed_threads">View manually hidden/removed threads</string>
     <string name="action_open_catalog_page">Open catalog page</string>
     <string name="action_go_to_post">Go to post</string>
     <string name="action_thread_options">More options</string>
@@ -1073,12 +1081,14 @@ If you ever log out or if the passcode expires you will have to change reply mod
     <string name="browse_controller_failed_to_parse_page_number">Failed to convert \'%1$s\' into integer value</string>
     <string name="browse_controller_composite_catalog_subtitle_loading">…</string>
 
-    <string name="thread_layout_hide_whole_chain">Hide whole chain</string>
-    <string name="thread_layout_remove_whole_chain">Remove whole chain</string>
+    <string name="thread_layout_hide_or_remove_whole_chain_action">%1$s whole chain</string>
+    <string name="thread_layout_hide_or_remove_future_replies_action">%1$s future replies</string>
     <string name="thread_layout_hide_post">Hide post</string>
     <string name="thread_layout_remove_post">Remove post</string>
-    <string name="thread_layout_hide_whole_chain_as_well">Would you like to hide the whole reply chain as well?</string>
-    <string name="thread_layout_remove_whole_chain_as_well">Would you like to remove the whole reply chain as well?</string>
+    <string name="thread_layout_hide_action">hide</string>
+    <string name="thread_layout_remove_action">remove</string>
+    <string name="thread_layout_hide_or_remove_whole_chain_as_well">Would you like to %1$s the whole reply chain with future replies as well?</string>
+    <string name="thread_layout_hide_or_remove_future_replies">Would you like to %1$s future replies to this post as well?</string>
 
     <string name="thread_layout_load_progress_preparing">Preparing</string>
     <string name="thread_layout_load_progress_requesting_server_data">Requesting data from the server</string>
@@ -1086,13 +1096,14 @@ If you ever log out or if the passcode expires you will have to change reply mod
     <string name="thread_layout_load_progress_processing_filters">Processing %1$d filters</string>
     <string name="thread_layout_load_progress_parsing_posts">Parsing %1$d posts</string>
     <string name="thread_layout_load_progress_persisting_posts">Persisting %1$d posts</string>
-    <string name="thread_layout_load_progress_applying_filters">Applying filters. Hidden/Removed posts count: %1$d. Posts matched by filters count: %2$d</string>
+    <string name="thread_layout_load_progress_applying_filters">Applying filters.\nHidden/Removed posts count: %1$d.\nPosts matched by filters count: %2$d</string>
     <string name="thread_layout_load_progress_diffing_results">Diffing new and old posts, applying results</string>
     <string name="thread_layout_load_progress_done">Done</string>
 
     <string name="restore_posts">Restore posts</string>
     <string name="restored_n_posts">Restored %1$d posts</string>
-    <string name="no_removed_posts_for_current_thread">You have not removed any posts in this thread</string>
+    <string name="no_removed_posts_for_current_thread">No hidden/removed posts found</string>
+    <string name="no_removed_threads_for_current_catalog">No hidden/removed threads found</string>
     <string name="select_all">Select all</string>
 
     <!-- Captcha settings -->
@@ -1520,6 +1531,10 @@ Actual error: \'%1$s\'</string>
     <string name="third_eye_add_site_controller_image_height_key">Image height json key (Optional. Will fetch and show image height)</string>
     <string name="third_eye_add_site_controller_image_tags_key">Image tags json key (Optional. Will fetch image tags to filter out images matching banned tags)</string>
     <string name="third_eye_add_site_controller_image_banned_tags">Banned tags (Optional if \'Image tags json key\' is not set. Must be whitespace separated)</string>
+
+    <string name="hidden_or_removed_posts_post_hidden">Hidden</string>
+    <string name="hidden_or_removed_posts_post_removed">Removed</string>
+    <string name="hidden_or_removed_posts_post_manually_restored">Manually restored</string>
 
     <string name="not_allowed_during_halloween">You are not allowed to do this</string>
     <string name="setting_show_prefetch_loading_indicator_title">Show loading indicator for prefetching images</string>

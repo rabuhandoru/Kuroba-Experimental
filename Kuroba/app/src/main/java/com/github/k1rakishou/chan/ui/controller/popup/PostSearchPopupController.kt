@@ -8,7 +8,6 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.github.k1rakishou.chan.R
 import com.github.k1rakishou.chan.core.di.component.activity.ActivityComponent
-import com.github.k1rakishou.chan.core.manager.ChanThreadManager
 import com.github.k1rakishou.chan.ui.adapter.PostRepliesAdapter
 import com.github.k1rakishou.chan.ui.cell.PostCellData
 import com.github.k1rakishou.chan.ui.cell.PostCellInterface
@@ -26,6 +25,7 @@ import com.github.k1rakishou.common.StringUtils
 import com.github.k1rakishou.common.isNotNullNorBlank
 import com.github.k1rakishou.common.mutableListWithCap
 import com.github.k1rakishou.common.updatePaddings
+import com.github.k1rakishou.core_logger.Logger
 import com.github.k1rakishou.model.data.descriptor.ChanDescriptor
 import com.github.k1rakishou.model.data.descriptor.PostDescriptor
 import com.github.k1rakishou.model.data.post.ChanPost
@@ -40,7 +40,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.*
-import javax.inject.Inject
 
 class PostSearchPopupController(
   context: Context,
@@ -48,16 +47,13 @@ class PostSearchPopupController(
   postCellCallback: PostCellInterface.PostCellCallback,
   private var initialQuery: String? = null
 ) : BasePostPopupController<PostSearchPopupController.PostSearchPopupData>(context, postPopupHelper, postCellCallback) {
-  private val currentPosts = mutableListOf<PostIndexed>()
+  private val indexedPosts = mutableListOf<PostIndexed>()
   private var skipDebouncer = true
   private var scrollPositionRestored = false
   private var updaterJob: Job? = null
 
   private lateinit var totalFoundTextView: ColorizableTextView
   private lateinit var searchLayout: SearchLayout
-
-  @Inject
-  lateinit var chanThreadManager: ChanThreadManager
 
   override val postPopupType: PostPopupType
     get() = PostPopupType.Search
@@ -83,13 +79,13 @@ class PostSearchPopupController(
   }
 
   override fun getDisplayingPostDescriptors(): List<PostDescriptor> {
-    if (currentPosts.isEmpty()) {
+    if (indexedPosts.isEmpty()) {
       return emptyList()
     }
 
     val postDescriptors: MutableList<PostDescriptor> = ArrayList()
-    for (chanPost in currentPosts) {
-      postDescriptors.add(chanPost.post.postDescriptor)
+    for (postIndexed in indexedPosts) {
+      postDescriptors.add(postIndexed.chanPost.postDescriptor)
     }
 
     return postDescriptors
@@ -148,10 +144,12 @@ class PostSearchPopupController(
       postCellCallback = postCellCallback,
       chanDescriptor = chanDescriptor,
       clickedPostDescriptor = null,
-      chanThreadViewableInfoManager = chanThreadViewableInfoManager,
-      postFilterManager = postFilterManager,
-      savedReplyManager = savedReplyManager,
-      postFilterHighlightManager = postFilterHighlightManager,
+      _chanThreadViewableInfoManager = chanThreadViewableInfoManager,
+      _chanThreadManager = chanThreadManager,
+      _postFilterManager = postFilterManager,
+      _savedReplyManager = savedReplyManager,
+      _postFilterHighlightManager = postFilterHighlightManager,
+      _postHideManager = postHideManager,
       initialTheme = themeEngine.chanTheme
     )
 
@@ -197,21 +195,20 @@ class PostSearchPopupController(
 
     val resultPosts = withContext(Dispatchers.Default) {
       val searchQuery = query.toLowerCase(Locale.ENGLISH)
-      val resultPosts = mutableListWithCap<PostIndexed>(128)
-      var postIndex = 0
+      val resultPosts = mutableListWithCap<ChanPost>(128)
 
-      chanThreadManager.iteratePostsWhile(data.descriptor) { chanPost ->
+      chanThreadManager.get().iteratePostsWhile(data.descriptor) { chanPost ->
         if (!isActive) {
           return@iteratePostsWhile false
         }
 
         if (query.length < MIN_QUERY_LENGTH) {
-          resultPosts += PostIndexed(chanPost.deepCopy(), postIndex++)
+          resultPosts += chanPost.deepCopy()
           return@iteratePostsWhile true
         }
 
         if (matchesQuery(chanPost, searchQuery)) {
-          resultPosts += PostIndexed(chanPost.deepCopy(), postIndex++)
+          resultPosts += chanPost.deepCopy()
           return@iteratePostsWhile true
         }
 
@@ -231,11 +228,23 @@ class PostSearchPopupController(
       totalFoundTextView.text = context.getString(R.string.search_found_count, resultPosts.size)
     }
 
-    this@PostSearchPopupController.currentPosts.clear()
-    this@PostSearchPopupController.currentPosts.addAll(resultPosts)
+    val retainedPosts = postHideHelper.get().processPostFilters(chanDescriptor, resultPosts, mutableSetOf())
+      .safeUnwrap { error ->
+        Logger.e(TAG, "postHideHelper.filterHiddenPosts error", error)
+        return
+      }
+
+    val indexedPosts = mutableListWithCap<PostIndexed>(retainedPosts.size)
+
+    for ((index, retainedPost) in retainedPosts.withIndex()) {
+      indexedPosts.add(PostIndexed(retainedPost, index))
+    }
+
+    this@PostSearchPopupController.indexedPosts.clear()
+    this@PostSearchPopupController.indexedPosts.addAll(indexedPosts)
 
     repliesAdapter.setSearchQuery(PostCellData.SearchQuery(query, MIN_QUERY_LENGTH))
-    repliesAdapter.setOrUpdateData(postsView.width, resultPosts, themeEngine.chanTheme)
+    repliesAdapter.setOrUpdateData(postsView.width, indexedPosts, themeEngine.chanTheme)
 
     postsView.post {
       if (!scrollPositionRestored) {
@@ -333,6 +342,7 @@ class PostSearchPopupController(
   ) : PostPopupHelper.PostPopupData
 
   companion object {
+    private const val TAG = "PostSearchPopupController"
     const val MIN_QUERY_LENGTH = 2
 
     val scrollPositionCache = LruCache<ChanDescriptor, IndexAndTop>(128)

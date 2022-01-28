@@ -64,13 +64,14 @@ open class PostLinkable(
 
     when (type) {
       Type.QUOTE,
+      Type.QUOTE_TO_HIDDEN_OR_REMOVED_POST,
       Type.LINK,
       Type.THREAD,
       Type.BOARD,
       Type.SEARCH,
       Type.DEAD,
       Type.ARCHIVE -> {
-        if (type == Type.QUOTE) {
+        if (type == Type.QUOTE || type == Type.QUOTE_TO_HIDDEN_OR_REMOVED_POST) {
           val value = when (linkableValue) {
             is Value.LongValue -> linkableValue.value
             else -> throw IllegalArgumentException("Unsupported value type: ${linkableValue::class.java.simpleName}")
@@ -162,6 +163,7 @@ open class PostLinkable(
 
   enum class Type {
     QUOTE,
+    QUOTE_TO_HIDDEN_OR_REMOVED_POST,
     LINK,
     SPOILER,
     THREAD,

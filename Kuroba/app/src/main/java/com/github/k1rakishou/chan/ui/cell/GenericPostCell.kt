@@ -81,8 +81,7 @@ class GenericPostCell(context: Context) : FrameLayout(context), PostCellInterfac
   }
 
   private fun getLayoutId(postCellData: PostCellData): Int {
-    val stub = postCellData.stub
-    if (stub) {
+    if (postCellData.isPostHidden) {
       return R.layout.cell_post_stub
     }
 

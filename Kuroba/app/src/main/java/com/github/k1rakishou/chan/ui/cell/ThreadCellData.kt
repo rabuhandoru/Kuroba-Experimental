@@ -2,9 +2,11 @@ package com.github.k1rakishou.chan.ui.cell
 
 import com.github.k1rakishou.ChanSettings
 import com.github.k1rakishou.chan.core.base.KurobaCoroutineScope
+import com.github.k1rakishou.chan.core.manager.ChanThreadManager
 import com.github.k1rakishou.chan.core.manager.ChanThreadViewableInfoManager
 import com.github.k1rakishou.chan.core.manager.PostFilterHighlightManager
 import com.github.k1rakishou.chan.core.manager.PostFilterManager
+import com.github.k1rakishou.chan.core.manager.PostHideManager
 import com.github.k1rakishou.chan.core.manager.SavedReplyManager
 import com.github.k1rakishou.chan.ui.adapter.PostsFilter
 import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.isDevBuild
@@ -31,14 +33,29 @@ import kotlin.time.ExperimentalTime
 import kotlin.time.measureTime
 
 class ThreadCellData(
-  private val chanThreadViewableInfoManager: Lazy<ChanThreadViewableInfoManager>,
+  private val _chanThreadViewableInfoManager: Lazy<ChanThreadViewableInfoManager>,
+  private val _chanThreadManager: Lazy<ChanThreadManager>,
   private val _postFilterManager: Lazy<PostFilterManager>,
   private val _postFilterHighlightManager: Lazy<PostFilterHighlightManager>,
   private val _savedReplyManager: Lazy<SavedReplyManager>,
+  private val _postHideManager: Lazy<PostHideManager>,
   initialTheme: ChanTheme
 ): Iterable<ThreadCellData.PostCellDataLazy> {
   private val postCellDataLazyList: MutableList<PostCellDataLazy> = mutableListWithCap(64)
   private val coroutineScope = KurobaCoroutineScope()
+
+  private val chanThreadViewableInfoManager: ChanThreadViewableInfoManager
+    get() = _chanThreadViewableInfoManager.get()
+  private val chanThreadManager: ChanThreadManager
+    get() = _chanThreadManager.get()
+  private val postFilterManager: PostFilterManager
+    get() = _postFilterManager.get()
+  private val postFilterHighlightManager: PostFilterHighlightManager
+    get() = _postFilterHighlightManager.get()
+  private val savedReplyManager: SavedReplyManager
+    get() = _savedReplyManager.get()
+  private val postHideManager: PostHideManager
+    get() = _postHideManager.get()
 
   private var _chanDescriptor: ChanDescriptor? = null
   private var postCellCallback: PostCellInterface.PostCellCallback? = null
@@ -76,12 +93,12 @@ class ThreadCellData(
         continue
       }
 
-      val postCellDataLazy = postCellDataLazyList.getOrNull(postCellDataIndex)
+      val oldPostCellDataLazy = postCellDataLazyList.getOrNull(postCellDataIndex)
         ?: continue
 
       val updatedPostCellData = withContext(Dispatchers.Default) {
-        val postCellData = postCellDataLazy.getOrCalculate()
-        val postIndexed = PostIndexed(updatedPost, postCellData.postIndex)
+        val oldPostCellData = oldPostCellDataLazy.getOrCalculate()
+        val postIndexed = PostIndexed(updatedPost, oldPostCellData.postIndex)
 
         val updatedPostCellData = postIndexedListToLazyPostCellDataList(
           postCellCallback = postCellCallback!!,
@@ -89,7 +106,8 @@ class ThreadCellData(
           theme = currentTheme,
           postIndexedList = listOf(postIndexed),
           postDescriptors = listOf(updatedPost.postDescriptor),
-          postCellDataWidthNoPaddings = postCellData.postCellDataWidthNoPaddings
+          postCellDataWidthNoPaddings = oldPostCellData.postCellDataWidthNoPaddings,
+          oldPostCellData = oldPostCellData
         )
 
         // precalculate right away
@@ -130,7 +148,9 @@ class ThreadCellData(
     this.postCellCallback = postCellCallback
     this.currentTheme = theme
 
-    val postDescriptors = postIndexedList.map { postIndexed -> postIndexed.post.postDescriptor }
+    val postDescriptors = postIndexedList.map { postIndexed ->
+      postIndexed.chanPost.postDescriptor
+    }
 
     val newPostCellDataLazyList = withContext(Dispatchers.Default) {
       return@withContext postIndexedListToLazyPostCellDataList(
@@ -139,7 +159,8 @@ class ThreadCellData(
         theme = theme,
         postIndexedList = postIndexedList,
         postDescriptors = postDescriptors,
-        postCellDataWidthNoPaddings = postCellDataWidthNoPaddings
+        postCellDataWidthNoPaddings = postCellDataWidthNoPaddings,
+        oldPostCellData = null
       )
     }
 
@@ -205,13 +226,10 @@ class ThreadCellData(
     theme: ChanTheme,
     postIndexedList: List<PostIndexed>,
     postDescriptors: List<PostDescriptor>,
-    postCellDataWidthNoPaddings: Int
+    postCellDataWidthNoPaddings: Int,
+    oldPostCellData: PostCellData?
   ): List<PostCellDataLazy> {
     BackgroundUtils.ensureBackgroundThread()
-
-    val postFilterManager = _postFilterManager.get()
-    val postFilterHighlightManager = _postFilterHighlightManager.get()
-    val savedReplyManager = _savedReplyManager.get()
 
     val totalPostsCount = postIndexedList.size
     val resultList = mutableListWithCap<PostCellDataLazy>(totalPostsCount)
@@ -234,14 +252,25 @@ class ThreadCellData(
     val isTablet = isTablet()
     val isSplitLayout = ChanSettings.isSplitLayoutMode()
 
+    val postHideMap = when (chanDescriptor) {
+      is ChanDescriptor.ICatalogDescriptor -> {
+        val chanCatalogThreadDescriptors = chanThreadManager.getCatalogThreadDescriptors(chanDescriptor)
+
+        postHideManager.getHiddenPostsForCatalog(chanCatalogThreadDescriptors)
+          .associateBy { chanPostHide -> chanPostHide.postDescriptor }
+      }
+      is ChanDescriptor.ThreadDescriptor -> {
+        postHideManager.getHiddenPostsForThread(chanDescriptor)
+          .associateBy { chanPostHide -> chanPostHide.postDescriptor }
+      }
+    }
+
     val postAlignmentMode = when (chanDescriptor) {
       is ChanDescriptor.CatalogDescriptor,
       is ChanDescriptor.CompositeCatalogDescriptor -> ChanSettings.catalogPostAlignmentMode.get()
       is ChanDescriptor.ThreadDescriptor -> ChanSettings.threadPostAlignmentMode.get()
     }
 
-    val filterHashMap = postFilterManager.getManyFilterHashes(postDescriptors)
-    val filterStubMap = postFilterManager.getManyFilterStubs(postDescriptors)
     val threadPostReplyMap = mutableMapWithCap<PostDescriptor, Boolean>(postIndexedList.size)
 
     if (chanDescriptor is ChanDescriptor.ThreadDescriptor) {
@@ -256,19 +285,20 @@ class ThreadCellData(
 
     postIndexedList.forEachIndexed { orderInList, postIndexed ->
       val lazyFunc = lazy {
-        val postDescriptor = postIndexed.post.postDescriptor
+        val chanPost = postIndexed.chanPost
+        val postDescriptor = chanPost.postDescriptor
 
         val postMultipleImagesCompactMode = ChanSettings.postMultipleImagesCompactMode.get()
           && postViewMode != PostCellData.PostViewMode.Search
-          && postIndexed.post.postImages.size > 1
+          && chanPost.postImages.size > 1
 
         val boardPage = boardPages?.boardPages
           ?.firstOrNull { boardPage -> boardPage.threads[postDescriptor.threadDescriptor()] != null }
 
         val postCellData = PostCellData(
           chanDescriptor = chanDescriptor,
-          post = postIndexed.post,
-          postImages = postIndexed.post.postImages,
+          post = chanPost,
+          postImages = chanPost.postImages,
           postIndex = postIndexed.postIndex,
           postCellDataWidthNoPaddings = postCellDataWidthNoPaddings,
           textSizeSp = textSizeSp,
@@ -276,7 +306,7 @@ class ThreadCellData(
           theme = chanTheme,
           postViewMode = postViewMode,
           markedPostNo = defaultMarkedNo,
-          showDivider = defaultShowDividerFunc.invoke(orderInList, totalPostsCount),
+          showDivider = oldPostCellData?.showDivider ?: defaultShowDividerFunc.invoke(orderInList, totalPostsCount),
           compact = defaultIsCompact,
           boardPostViewMode = defaultBoardPostViewMode,
           boardPostsSortOrder = boardPostsSortOrder,
@@ -291,14 +321,13 @@ class ThreadCellData(
           showPostFileInfo = showPostFileInfo,
           markUnseenPosts = markUnseenPosts,
           markSeenThreads = markSeenThreads,
-          stub = filterStubMap[postDescriptor] ?: false,
-          filterHash = filterHashMap[postDescriptor] ?: 0,
+          postHideMap = postHideMap,
           searchQuery = defaultSearchQuery,
           keywordsToHighlight = highlightFilterKeywordMap[postDescriptor] ?: emptySet(),
           postAlignmentMode = postAlignmentMode,
           postCellThumbnailSizePercents = postCellThumbnailSizePercents,
-          isSavedReply = postIndexed.post.isSavedReply,
-          isReplyToSavedReply = postIndexed.post.repliesTo
+          isSavedReply = chanPost.isSavedReply,
+          isReplyToSavedReply = chanPost.repliesTo
             .any { replyTo -> threadPostReplyMap[replyTo] == true },
           isTablet = isTablet,
           isSplitLayout = isSplitLayout,
@@ -311,7 +340,7 @@ class ThreadCellData(
       }
 
       val postCellDataLazy = PostCellDataLazy(
-        post = postIndexed.post,
+        post = postIndexed.chanPost,
         lazyDataCalcFunc = lazyFunc
       )
 
@@ -405,19 +434,21 @@ class ThreadCellData(
     }
   }
 
-  fun resetCachedPostData(postDescriptor: PostDescriptor) {
-    val postCellDataIndex = postCellDataLazyList
-      .indexOfFirst { postCellDataLazy -> postCellDataLazy.postDescriptor == postDescriptor }
+  fun resetCachedPostData(postDescriptors: Collection<PostDescriptor>) {
+    postDescriptors.forEach { postDescriptor ->
+      val postCellDataIndex = postCellDataLazyList
+        .indexOfFirst { postCellDataLazy -> postCellDataLazy.postDescriptor == postDescriptor }
 
-    if (postCellDataIndex < 0) {
-      return
-    }
+      if (postCellDataIndex < 0) {
+        return@forEach
+      }
 
-    val postCellDataLazy = postCellDataLazyList.getOrNull(postCellDataIndex)
-      ?: return
+      val postCellDataLazy = postCellDataLazyList.getOrNull(postCellDataIndex)
+        ?: return@forEach
 
-    if (postCellDataLazy.isInitialized) {
-      postCellDataLazy.postCellDataCalculated.resetEverything()
+      if (postCellDataLazy.isInitialized) {
+        postCellDataLazy.postCellDataCalculated.resetEverything()
+      }
     }
   }
 
@@ -535,7 +566,7 @@ class ThreadCellData(
       return null
     }
 
-    return chanThreadViewableInfoManager.get().view(chanDescriptor) { chanThreadViewableInfoView ->
+    return chanThreadViewableInfoManager.view(chanDescriptor) { chanThreadViewableInfoView ->
       if (chanThreadViewableInfoView.lastViewedPostNo >= 0) {
         // Do not process the last post, the indicator does not have to appear at the bottom
         var postIndex = 0

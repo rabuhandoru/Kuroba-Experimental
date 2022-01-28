@@ -627,7 +627,8 @@ class ThreadListLayout(context: Context, attrs: AttributeSet?)
     recyclerViewWidth: Int,
     descriptor: ChanDescriptor,
     filter: PostsFilter,
-    initial: Boolean
+    initial: Boolean,
+    additionalPostsToReparse: MutableSet<PostDescriptor>
   ): ShowPostsResult {
     val presenter = threadPresenter
     if (presenter == null) {
@@ -655,12 +656,11 @@ class ThreadListLayout(context: Context, attrs: AttributeSet?)
     val posts = chanThreadManager.getMutableListOfPosts(descriptor)
 
     val (filteredPosts, applyFilterDuration) = measureTimedValue {
-      filter.applyFilter(descriptor, posts)
+      filter.applyFilter(descriptor, posts, additionalPostsToReparse)
     }
 
     val chanDescriptor = currentChanDescriptorOrNull()
     chanLoadProgressNotifier.sendProgressEvent(ChanLoadProgressEvent.RefreshingPosts(descriptor))
-
 
     val setThreadPostsDuration = measureTime {
       val prevScrollPositionData = getPrevScrollPosition(chanDescriptor, initial)
@@ -1315,6 +1315,17 @@ class ThreadListLayout(context: Context, attrs: AttributeSet?)
     recyclerView.removeItemDecoration(chan4BirthdayDecoration)
   }
 
+  suspend fun onPostsWithDescriptorsUpdated(updatedPostDescriptors: Collection<PostDescriptor>) {
+    BackgroundUtils.ensureMainThread()
+
+    val updatedPosts = chanThreadManager.getPosts(updatedPostDescriptors)
+    if (updatedPosts.isEmpty()) {
+      return
+    }
+
+    postAdapter.updatePosts(updatedPosts)
+  }
+
   suspend fun onPostsUpdated(updatedPosts: List<ChanPost>) {
     BackgroundUtils.ensureMainThread()
     postAdapter.updatePosts(updatedPosts)
@@ -1326,7 +1337,11 @@ class ThreadListLayout(context: Context, attrs: AttributeSet?)
   }
 
   fun resetCachedPostData(postDescriptor: PostDescriptor) {
-    postAdapter.resetCachedPostData(postDescriptor)
+    resetCachedPostData(listOf(postDescriptor))
+  }
+
+  fun resetCachedPostData(postDescriptors: Collection<PostDescriptor>) {
+    postAdapter.resetCachedPostData(postDescriptors)
   }
 
   fun onImageOptionsComplete() {

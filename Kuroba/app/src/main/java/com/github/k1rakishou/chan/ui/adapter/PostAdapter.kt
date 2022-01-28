@@ -24,9 +24,11 @@ import androidx.recyclerview.widget.StaggeredGridLayoutManager
 import com.github.k1rakishou.ChanSettings
 import com.github.k1rakishou.ChanSettings.BoardPostViewMode
 import com.github.k1rakishou.chan.R
+import com.github.k1rakishou.chan.core.manager.ChanThreadManager
 import com.github.k1rakishou.chan.core.manager.ChanThreadViewableInfoManager
 import com.github.k1rakishou.chan.core.manager.PostFilterHighlightManager
 import com.github.k1rakishou.chan.core.manager.PostFilterManager
+import com.github.k1rakishou.chan.core.manager.PostHideManager
 import com.github.k1rakishou.chan.core.manager.PostHighlightManager
 import com.github.k1rakishou.chan.core.manager.SavedReplyManager
 import com.github.k1rakishou.chan.core.repository.CurrentlyDisplayedCatalogPostsRepository
@@ -66,6 +68,10 @@ class PostAdapter(
   lateinit var savedReplyManager: Lazy<SavedReplyManager>
   @Inject
   lateinit var postFilterHighlightManager: Lazy<PostFilterHighlightManager>
+  @Inject
+  lateinit var postHideManager: Lazy<PostHideManager>
+  @Inject
+  lateinit var chanThreadManager: Lazy<ChanThreadManager>
   @Inject
   lateinit var themeEngine: ThemeEngine
   @Inject
@@ -121,10 +127,12 @@ class PostAdapter(
     this.statusCellCallback = statusCellCallback
 
     threadCellData = ThreadCellData(
-      chanThreadViewableInfoManager = chanThreadViewableInfoManager,
+      _chanThreadViewableInfoManager = chanThreadViewableInfoManager,
+      _chanThreadManager = chanThreadManager,
       _postFilterManager = postFilterManager,
       _postFilterHighlightManager = postFilterHighlightManager,
       _savedReplyManager = savedReplyManager,
+      _postHideManager = postHideManager,
       initialTheme = themeEngine.chanTheme
     )
 
@@ -236,7 +244,7 @@ class PostAdapter(
       return PostCellData.TYPE_STATUS
     } else {
       val postCellData = threadCellData.getPostCellData(position)
-      if (postCellData.stub) {
+      if (postCellData.isPostHidden) {
         return PostCellData.TYPE_POST_STUB
       } else {
         return getPostCellItemViewType(postCellData)
@@ -392,8 +400,8 @@ class PostAdapter(
     return threadCellData.getScrollPosition(displayPosition)
   }
 
-  fun resetCachedPostData(postDescriptor: PostDescriptor) {
-    threadCellData.resetCachedPostData(postDescriptor)
+  fun resetCachedPostData(postDescriptors: Collection<PostDescriptor>) {
+    threadCellData.resetCachedPostData(postDescriptors)
   }
 
   private fun showStatusView(): Boolean {
@@ -500,7 +508,7 @@ class PostAdapter(
   }
 
   private fun getPostCellItemViewType(postCellData: PostCellData): Int {
-    if (postCellData.stub) {
+    if (postCellData.isPostHidden) {
       return PostCellData.PostCellItemViewType.TypePostStub.viewTypeRaw
     }
 

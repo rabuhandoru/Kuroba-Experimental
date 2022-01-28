@@ -482,8 +482,19 @@ class ChanThread(
 
   fun findPostWithRepliesRecursive(
     postDescriptor: PostDescriptor,
-    postsSet: MutableSet<ChanPost>
+    postsSet: MutableSet<ChanPost>,
+    includeRepliesFrom: Boolean,
+    includeRepliesTo: Boolean,
+    maxRecursion: Int = Int.MAX_VALUE
   ) {
+    if (maxRecursion < 0) {
+      return
+    }
+
+    require(includeRepliesFrom || includeRepliesTo) {
+      "Either includeRepliesFrom or includeRepliesTo must be true"
+    }
+
     val postsToCheck = mutableListOf<ChanPost>()
 
     lock.read {
@@ -502,10 +513,31 @@ class ChanThread(
       }
 
       postsSet.add(post)
-      val repliesFromCopy = post.repliesFromCopy
 
-      repliesFromCopy.forEach { lookUpPostDescriptor ->
-        findPostWithRepliesRecursive(lookUpPostDescriptor, postsSet)
+      if (includeRepliesFrom) {
+        val repliesFrom = post.repliesFromCopy
+        repliesFrom.forEach { lookUpPostDescriptor ->
+          findPostWithRepliesRecursive(
+            postDescriptor = lookUpPostDescriptor,
+            postsSet = postsSet,
+            includeRepliesFrom = includeRepliesFrom,
+            includeRepliesTo = includeRepliesTo,
+            maxRecursion = maxRecursion - 1
+          )
+        }
+      }
+
+      if (includeRepliesTo) {
+        val repliesTo = post.repliesTo
+        repliesTo.forEach { lookUpPostDescriptor ->
+          findPostWithRepliesRecursive(
+            postDescriptor = lookUpPostDescriptor,
+            postsSet = postsSet,
+            includeRepliesFrom = includeRepliesFrom,
+            includeRepliesTo = includeRepliesTo,
+            maxRecursion = maxRecursion - 1
+          )
+        }
       }
     }
   }
@@ -559,6 +591,25 @@ class ChanThread(
           return@read
         }
       }
+    }
+  }
+
+  fun <T> mapPostsOrdered(mapper: (ChanPost) -> T): List<T> {
+    return lock.read {
+      if (threadPosts.isEmpty()) {
+        return@read emptyList()
+      }
+
+      val resultList = mutableListOf<T>()
+
+      for (index in threadPosts.indices) {
+        val chanPost = threadPosts.getOrNull(index)
+          ?: return@read emptyList()
+
+        resultList += mapper(chanPost)
+      }
+
+      return@read resultList
     }
   }
 

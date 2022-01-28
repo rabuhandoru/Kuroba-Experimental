@@ -3,9 +3,11 @@ package com.github.k1rakishou.chan.ui.adapter
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import com.github.k1rakishou.ChanSettings
+import com.github.k1rakishou.chan.core.manager.ChanThreadManager
 import com.github.k1rakishou.chan.core.manager.ChanThreadViewableInfoManager
 import com.github.k1rakishou.chan.core.manager.PostFilterHighlightManager
 import com.github.k1rakishou.chan.core.manager.PostFilterManager
+import com.github.k1rakishou.chan.core.manager.PostHideManager
 import com.github.k1rakishou.chan.core.manager.SavedReplyManager
 import com.github.k1rakishou.chan.ui.cell.GenericPostCell
 import com.github.k1rakishou.chan.ui.cell.PostCellData
@@ -21,20 +23,24 @@ import dagger.Lazy
 class PostRepliesAdapter(
   private val postViewMode: PostCellData.PostViewMode,
   private val postCellCallback: PostCellInterface.PostCellCallback,
-  private val chanDescriptor: ChanDescriptor,
+  val chanDescriptor: ChanDescriptor,
   private val clickedPostDescriptor: PostDescriptor?,
-  chanThreadViewableInfoManager: Lazy<ChanThreadViewableInfoManager>,
-  postFilterManager: Lazy<PostFilterManager>,
-  savedReplyManager: Lazy<SavedReplyManager>,
-  postFilterHighlightManager: Lazy<PostFilterHighlightManager>,
+  _chanThreadViewableInfoManager: Lazy<ChanThreadViewableInfoManager>,
+  _chanThreadManager: Lazy<ChanThreadManager>,
+  _postFilterManager: Lazy<PostFilterManager>,
+  _savedReplyManager: Lazy<SavedReplyManager>,
+  _postFilterHighlightManager: Lazy<PostFilterHighlightManager>,
+  _postHideManager: Lazy<PostHideManager>,
   initialTheme: ChanTheme
 ) : RecyclerView.Adapter<PostRepliesAdapter.ReplyViewHolder>() {
 
   private val threadCellData = ThreadCellData(
-    chanThreadViewableInfoManager = chanThreadViewableInfoManager,
-    _postFilterManager = postFilterManager,
-    _savedReplyManager = savedReplyManager,
-    _postFilterHighlightManager = postFilterHighlightManager,
+    _chanThreadViewableInfoManager = _chanThreadViewableInfoManager,
+    _chanThreadManager = _chanThreadManager,
+    _postFilterManager = _postFilterManager,
+    _savedReplyManager = _savedReplyManager,
+    _postFilterHighlightManager = _postFilterHighlightManager,
+    _postHideManager = _postHideManager,
     initialTheme = initialTheme
   )
 
@@ -44,6 +50,10 @@ class PostRepliesAdapter(
     threadCellData.defaultBoardPostViewMode = ChanSettings.BoardPostViewMode.LIST
     threadCellData.defaultMarkedNo = clickedPostDescriptor?.postNo
     threadCellData.defaultShowDividerFunc = { postIndex: Int, totalPostsCount: Int -> postIndex < totalPostsCount - 1 }
+  }
+
+  fun displayedPosts(): List<PostDescriptor> {
+    return threadCellData.map { it.post.postDescriptor }
   }
 
   fun cleanup() {
@@ -103,8 +113,8 @@ class PostRepliesAdapter(
     notifyDataSetChanged()
   }
 
-  fun resetCachedPostData(postDescriptor: PostDescriptor) {
-    threadCellData.resetCachedPostData(postDescriptor)
+  fun resetCachedPostData(postDescriptors: Collection<PostDescriptor>) {
+    threadCellData.resetCachedPostData(postDescriptors)
   }
 
   suspend fun updatePosts(updatedPosts: List<ChanPost>) {

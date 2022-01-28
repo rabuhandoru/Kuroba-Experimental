@@ -86,7 +86,7 @@ class ThemeControllerHelper(
     override fun onPreviewThreadPostsClicked(post: ChanPost) {}
     override fun onPopulatePostOptions(post: ChanPost, menu: MutableList<FloatingListMenuItem>, inPopup: Boolean) {}
     override fun onPostOptionClicked(post: ChanPost, item: FloatingListMenuItem, inPopup: Boolean) {}
-    override fun onPostLinkableClicked(post: ChanPost, linkable: PostLinkable) {}
+    override fun onPostLinkableClicked(post: ChanPost, linkable: PostLinkable, inPopup: Boolean) {}
     override fun onPostLinkableLongClicked(post: ChanPost, linkable: PostLinkable, inPopup: Boolean) {}
     override fun onPostNoClicked(post: ChanPost) {}
     override fun onPostPosterIdClicked(post: ChanPost) {}
@@ -95,7 +95,7 @@ class ThemeControllerHelper(
     override fun onPostSelectionQuoted(postDescriptor: PostDescriptor, selection: CharSequence) {}
     override fun onPostSelectionFilter(postDescriptor: PostDescriptor, selection: CharSequence) {}
     override fun showPostOptions(post: ChanPost, inPopup: Boolean, items: List<FloatingListMenuItem>) {}
-    override fun onUnhidePostClick(post: ChanPost) {}
+    override fun onUnhidePostClick(post: ChanPost, inPopup: Boolean) {}
     override fun currentSpanCount(): Int = 1
 
     override val currentChanDescriptor: ChanDescriptor?
@@ -107,8 +107,12 @@ class ThemeControllerHelper(
   }
 
   private val parserCallback: PostParser.Callback = object : PostParser.Callback {
-    override fun isSaved(postNo: Long, postSubNo: Long): Boolean {
+    override fun isSaved(threadNo: Long, postNo: Long, postSubNo: Long): Boolean {
       return false
+    }
+
+    override fun isHiddenOrRemoved(threadNo: Long, postNo: Long, postSubNo: Long): Int {
+      return PostParser.NORMAL_POST
     }
 
     override fun isInternal(postNo: Long): Boolean {
@@ -367,7 +371,9 @@ class ThemeControllerHelper(
   }
 
   private fun indexPosts(posts: List<ChanPost>): List<PostIndexed> {
-    return posts.mapIndexed { index, post -> PostIndexed(post, index) }
+    return posts.mapIndexed { index, post ->
+      PostIndexed(post, index)
+    }
   }
 
   private fun hackSpanColors(input: CharSequence?, theme: ChanTheme) {
