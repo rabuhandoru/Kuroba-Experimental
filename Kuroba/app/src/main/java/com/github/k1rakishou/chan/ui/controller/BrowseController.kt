@@ -71,7 +71,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
-import java.util.*
 import javax.inject.Inject
 
 class BrowseController(
@@ -212,8 +211,9 @@ class BrowseController(
 
   private fun openBoardSelectionController() {
     val boardSelectionController = BoardSelectionController(
-      context,
-      object : BoardSelectionController.UserSelectionListener {
+      context = context,
+      currentSiteDescriptor = chanDescriptor?.siteDescriptor(),
+      callback = object : BoardSelectionController.UserSelectionListener {
         override fun onOpenSitesSettingsClicked() {
           openSitesSetupController()
         }
@@ -231,7 +231,7 @@ class BrowseController(
         }
       })
 
-    navigationController!!.presentController(boardSelectionController)
+    requireNavController().presentController(boardSelectionController)
   }
 
   private fun openSitesSetupController() {
@@ -816,13 +816,14 @@ class BrowseController(
     showPostsInExternalThreadHelper.showPostsInExternalThread(postDescriptor, isPreviewingCatalogThread)
   }
 
-  override suspend fun openExternalThread(postDescriptor: PostDescriptor) {
+  override suspend fun openExternalThread(postDescriptor: PostDescriptor, scrollToPost: Boolean) {
     val descriptor = chanDescriptor
       ?: return
 
     openExternalThreadHelper.openExternalThread(
       currentChanDescriptor = descriptor,
-      postDescriptor = postDescriptor
+      postDescriptor = postDescriptor,
+      scrollToPost = scrollToPost
     ) { threadDescriptor ->
       mainScope.launch { showThread(descriptor = threadDescriptor, animated = true) }
     }

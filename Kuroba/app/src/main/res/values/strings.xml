@@ -672,6 +672,8 @@ Usually that means that you forgot to remove a space from the beginning or the e
 
     <!-- Appearance post group -->
     <string name="setting_post_full_date">Show the full date on posts</string>
+    <string name="setting_post_full_date_local_locale">Use system locale for post date format</string>
+    <string name="setting_post_full_date_local_locale_description">By default English/US is used, if this setting is enabled then your system\'s locale will be used</string>
     <string name="setting_post_draw_post_thumbnail_background">Draw background behind post thumbnails</string>
     <string name="setting_post_file_info">Show file info on posts</string>
     <string name="setting_post_shift_post_comment">Shift post comment to be to the left/right side of a thumbnail when possible</string>
@@ -714,6 +716,7 @@ Usually that means that you forgot to remove a space from the beginning or the e
     <string name="settings_reveal_image_spoilers">Auto reveal image spoilers</string>
     <string name="setting_media_viewer_gesture_settings">Media viewer gesture settings</string>
     <string name="setting_media_viewer_offscreen_pages_count">Media viewer offscreen pages count (%1$d)</string>
+    <string name="setting_media_viewer_reorder_actions">Reorder media viewer buttons</string>
     <string name="setting_media_viewer_auto_swipe">Launch auto page swiper</string>
     <string name="setting_media_viewer_one_offscreen_page">One offscreen page (3 pages total)</string>
     <string name="setting_media_viewer_two_offscreen_page">Two offscreen pages (5 pages total, may become laggy on some devices)</string>
@@ -935,7 +938,7 @@ Usually that means that you forgot to remove a space from the beginning or the e
     <string name="setting_posting_limits_info_refresh_success">Posting limits info refreshed</string>
     <string name="setting_posting_limits_info_refresh_failure">Failed to refresh posting limits info</string>
 
-    <string name="setting_pass_bottom_description">"
+    <string name="setting_pass_bottom_description_chan4">"
 <![CDATA[
 Forgot your 4chan Pass login details?<br>
 <a href=\"https://www.4chan.org/pass?reset\">Go here to reset your PIN.</a><br>
@@ -952,6 +955,7 @@ Otherwise you will still have to solve captchas.<br>
 If you ever log out or if the passcode expires you will have to change reply mode too.
 ]]>
     "</string>
+    <string name="setting_pass_bottom_description_dvach">You need to pass 2ch anti-spam checks before trying to enter your passcode!</string>
 
     <string name="settings_screen_theme">Themes</string>
     <string name="image_quality">Image quality: %1$d</string>

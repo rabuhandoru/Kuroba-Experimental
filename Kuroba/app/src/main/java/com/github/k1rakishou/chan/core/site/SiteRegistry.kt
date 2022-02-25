@@ -16,9 +16,9 @@
  */
 package com.github.k1rakishou.chan.core.site
 
-import com.github.k1rakishou.chan.core.site.sites.*
+import com.github.k1rakishou.chan.core.site.sites.Chan370
 import com.github.k1rakishou.chan.core.site.sites.CompositeCatalogSite
-import com.github.k1rakishou.chan.core.site.sites.lainchan.Lainchan
+import com.github.k1rakishou.chan.core.site.sites.Diochan
 import com.github.k1rakishou.chan.core.site.sites.Sushichan
 import com.github.k1rakishou.chan.core.site.sites.Wired7
 import com.github.k1rakishou.chan.core.site.sites.chan4.Chan4
@@ -31,15 +31,16 @@ import com.github.k1rakishou.chan.core.site.sites.foolfuuka.sites.DesuArchive
 import com.github.k1rakishou.chan.core.site.sites.foolfuuka.sites.Fireden
 import com.github.k1rakishou.chan.core.site.sites.foolfuuka.sites.ForPlebs
 import com.github.k1rakishou.chan.core.site.sites.foolfuuka.sites.Nyafuu
+import com.github.k1rakishou.chan.core.site.sites.foolfuuka.sites.RozenArcana
 import com.github.k1rakishou.chan.core.site.sites.foolfuuka.sites.TokyoChronos
 import com.github.k1rakishou.chan.core.site.sites.foolfuuka.sites.WakarimasenMoe
 import com.github.k1rakishou.chan.core.site.sites.fuuka.sites.Warosu
 import com.github.k1rakishou.chan.core.site.sites.kun8.Kun8
+import com.github.k1rakishou.chan.core.site.sites.lainchan.Lainchan
 import com.github.k1rakishou.chan.core.site.sites.lynxchan.Endchan
 import com.github.k1rakishou.chan.core.site.sites.lynxchan.Kohlchan
 import com.github.k1rakishou.chan.core.site.sites.lynxchan.Bbwchan
 import com.github.k1rakishou.model.data.descriptor.SiteDescriptor
-import java.util.*
 
 /**
  * Registry of all sites and url handler we have.
@@ -70,6 +71,7 @@ object SiteRegistry {
     siteClasses.addSiteToSiteClassesMap(Chan370.SITE_NAME, Chan370::class.java)
     siteClasses.addSiteToSiteClassesMap(Endchan.SITE_NAME, Endchan::class.java)
     siteClasses.addSiteToSiteClassesMap(Kohlchan.SITE_NAME, Kohlchan::class.java)
+    siteClasses.addSiteToSiteClassesMap(RozenArcana.SITE_NAME, RozenArcana::class.java)
     siteClasses.addSiteToSiteClassesMap(Bbwchan.SITE_NAME, Bbwchan::class.java)
 
     // A synthetic site which only purpose is to have an order in the global site order for composed

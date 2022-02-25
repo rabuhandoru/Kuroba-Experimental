@@ -2,9 +2,6 @@ package com.github.k1rakishou.model.util
 
 import android.annotation.SuppressLint
 import android.text.TextUtils
-import android.widget.TextView
-import androidx.core.text.PrecomputedTextCompat
-import androidx.core.widget.TextViewCompat
 import com.github.k1rakishou.common.MurmurHashUtils
 import com.github.k1rakishou.common.StringUtils
 import com.github.k1rakishou.core_logger.Logger
@@ -25,10 +22,17 @@ import kotlin.math.min
 object ChanPostUtils {
   private const val TAG = "ChanPostUtils"
 
-  private val dateFormat = SimpleDateFormat.getDateTimeInstance(
+  private val dateFormatEnglish = SimpleDateFormat.getDateTimeInstance(
     DateFormat.SHORT,
     DateFormat.MEDIUM,
     Locale.ENGLISH
+  )
+
+  @SuppressLint("ConstantLocale")
+  private val dateFormatLocal = SimpleDateFormat.getDateTimeInstance(
+    DateFormat.SHORT,
+    DateFormat.MEDIUM,
+    Locale.getDefault()
   )
 
   @JvmStatic
@@ -145,12 +149,16 @@ object ChanPostUtils {
     return "/" + boardDescriptor.boardCode + "/" + threadDescriptor.threadNo
   }
 
-  fun getLocalDate(post: ChanPost): String {
+  fun getLocalDate(post: ChanPost, localDate: Boolean): String {
     val tmpDate = Date()
     tmpDate.time = post.timestamp * 1000L
 
-    return try {
-      dateFormat.format(tmpDate)
+    try {
+      if (localDate) {
+        return dateFormatLocal.format(tmpDate)
+      } else {
+        return dateFormatEnglish.format(tmpDate)
+      }
     } catch (error: Throwable) {
       Logger.e(TAG, "Invalid time: ${tmpDate.time}")
       return "Unk"
@@ -290,24 +298,6 @@ object ChanPostUtils {
           findPostWithRepliesRecursive(replyId, posts, postsSet)
         }
       }
-    }
-  }
-
-  fun wrapTextIntoPrecomputedText(text: CharSequence?, textView: TextView) {
-    if (text.isNullOrEmpty()) {
-      textView.setText(text, TextView.BufferType.SPANNABLE)
-      return
-    }
-
-    val precomputedTextCompat = PrecomputedTextCompat.create(
-      text,
-      TextViewCompat.getTextMetricsParams(textView)
-    )
-
-    try {
-      TextViewCompat.setPrecomputedText(textView, precomputedTextCompat)
-    } catch (ignored: Throwable) {
-      textView.setText(text, TextView.BufferType.SPANNABLE)
     }
   }
 

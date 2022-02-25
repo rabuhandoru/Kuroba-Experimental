@@ -21,6 +21,7 @@ import android.text.TextUtils
 import android.util.AttributeSet
 import android.view.View
 import android.widget.TextView
+import androidx.appcompat.widget.AppCompatTextView
 import androidx.constraintlayout.widget.ConstraintLayout
 import com.github.k1rakishou.ChanSettings
 import com.github.k1rakishou.ChanSettings.BoardPostViewMode
@@ -49,10 +50,8 @@ import com.github.k1rakishou.core_themes.ThemeEngine
 import com.github.k1rakishou.core_themes.ThemeEngine.ThemeChangesListener
 import com.github.k1rakishou.model.data.post.ChanPost
 import com.github.k1rakishou.model.data.post.ChanPostImage
-import com.github.k1rakishou.model.util.ChanPostUtils
 import dagger.Lazy
 import kotlinx.coroutines.launch
-import java.util.*
 import javax.inject.Inject
 
 class CardPostCell : ConstraintLayout,
@@ -78,9 +77,9 @@ class CardPostCell : ConstraintLayout,
   private var blinkExecuted = false
 
   private lateinit var cardContent: FixedRatioLinearLayout
-  private lateinit var title: TextView
+  private lateinit var title: AppCompatTextView
   private lateinit var comment: TextView
-  private lateinit var replies: TextView
+  private lateinit var replies: AppCompatTextView
   private lateinit var icons: PostIcons
 
   private val scope = KurobaCoroutineScope()
@@ -310,7 +309,7 @@ class CardPostCell : ConstraintLayout,
 
     if (!TextUtils.isEmpty(postCellData.postTitle)) {
       title.visibility = VISIBLE
-      ChanPostUtils.wrapTextIntoPrecomputedText(postCellData.postTitle, title)
+      title.setText(postCellData.postTitle, TextView.BufferType.SPANNABLE)
     } else {
       title.visibility = GONE
       title.text = null
@@ -318,8 +317,7 @@ class CardPostCell : ConstraintLayout,
 
     comment.setText(postCellData.commentText, TextView.BufferType.SPANNABLE)
     comment.requestLayout()
-
-    ChanPostUtils.wrapTextIntoPrecomputedText(postCellData.repliesToThisPostText, replies)
+    replies.setText(postCellData.repliesToThisPostText, TextView.BufferType.SPANNABLE)
 
     bindIcons(postCellData)
 

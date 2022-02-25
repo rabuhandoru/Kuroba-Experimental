@@ -27,6 +27,8 @@ import com.github.k1rakishou.chan.features.media_viewer.MediaViewerActivity
 import com.github.k1rakishou.common.resumeValueSafe
 import com.github.k1rakishou.core_logger.Logger
 import kotlinx.coroutines.suspendCancellableCoroutine
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import kotlin.math.log10
 
 
@@ -94,34 +96,43 @@ fun Context.getLifecycleFromContext(): Lifecycle? {
   }
 }
 
-suspend fun View.awaitUntilGloballyLaidOut(
+suspend fun View.awaitUntilGloballyLaidOutAndGetSize(
   waitForWidth: Boolean = false,
   waitForHeight: Boolean = false,
   attempts: Int = 5
-) {
-  if (!waitForWidth && !waitForHeight) {
-    error("At least one of the parameters must be set to true!")
-  }
+) : Pair<Int, Int> {
+  val viewTag = this.toString()
 
-  if (attempts <= 0) {
-    Logger.e(TAG, "awaitUntilGloballyLaidOut() exhausted all attempts exiting, viewInfo=${this}")
-    return
+  if (!waitForWidth && !waitForHeight) {
+    error("awaitUntilGloballyLaidOut($viewTag) At least one of the parameters must be set to true!")
   }
 
   val widthOk = (!waitForWidth || width > 0)
   val heightOk = (!waitForHeight || height > 0)
 
+  if (attempts <= 0) {
+    Logger.e(TAG, "awaitUntilGloballyLaidOut($viewTag) exhausted all attempts exiting " +
+      "(widthOk=$widthOk, width=$width, heightOk=$heightOk, height=$height)")
+    return width to height
+  }
+
   if (widthOk && heightOk) {
-    return
+    Logger.d(TAG, "awaitUntilGloballyLaidOut($viewTag) widthOk=$widthOk, width=$width, heightOk=$heightOk, height=$height")
+    return width to height
   }
 
   if (!ViewCompat.isLaidOut(this) && !isLayoutRequested) {
+    Logger.d(TAG, "awaitUntilGloballyLaidOut($viewTag) requesting layout...")
     requestLayout()
   }
+
+  Logger.d(TAG, "awaitUntilGloballyLaidOut($viewTag) before OnGlobalLayoutListener (attempts=$attempts)")
 
   suspendCancellableCoroutine<Unit> { cancellableContinuation ->
     val listener = object : OnGlobalLayoutListener {
       override fun onGlobalLayout() {
+        Logger.d(TAG, "awaitUntilGloballyLaidOut($viewTag) onGlobalLayout called")
+
         viewTreeObserver.removeOnGlobalLayoutListener(this)
         cancellableContinuation.resumeValueSafe(Unit)
       }
@@ -130,15 +141,14 @@ suspend fun View.awaitUntilGloballyLaidOut(
     viewTreeObserver.addOnGlobalLayoutListener(listener)
 
     cancellableContinuation.invokeOnCancellation { cause ->
-      if (cause == null) {
-        return@invokeOnCancellation
-      }
+      Logger.d(TAG, "awaitUntilGloballyLaidOut($viewTag) onCancel called, reason=${cause}")
 
       viewTreeObserver.removeOnGlobalLayoutListener(listener)
     }
   }
 
-  awaitUntilGloballyLaidOut(waitForWidth, waitForHeight, attempts - 1)
+  Logger.d(TAG, "awaitUntilGloballyLaidOut($viewTag) after OnGlobalLayoutListener")
+  return awaitUntilGloballyLaidOutAndGetSize(waitForWidth, waitForHeight, attempts - 1)
 }
 
 fun Controller.findControllerOrNull(predicate: (Controller) -> Boolean): Controller? {
@@ -231,7 +241,7 @@ private fun checkPattern(input: ByteArray, offset: Int, pattern: ByteArray): Boo
   return true
 }
 
-fun fixImageUrlIfNecessary(imageUrl: String?): String? {
+fun fixImageUrlIfNecessary(requestUrl: String, imageUrl: String?): String? {
   if (imageUrl == null) {
     return imageUrl
   }
@@ -249,6 +259,27 @@ fun fixImageUrlIfNecessary(imageUrl: String?): String? {
 
   if (imageUrl.startsWith("//")) {
     return "https:$imageUrl"
+  }
+
+  if (imageUrl.startsWith("/")) {
+    val requestHttpUrl = requestUrl.toHttpUrlOrNull()
+    if (requestHttpUrl == null) {
+      Logger.e(TAG, "Failed to convert requestUrl \'${requestUrl}\' to HttpUrl")
+      return null
+    }
+
+    val scheme = if (requestHttpUrl.isHttps) {
+      requestHttpUrl.scheme
+    } else {
+      "https"
+    }
+
+    return HttpUrl.Builder()
+      .scheme(scheme)
+      .host(requestHttpUrl.host)
+      .encodedPath(imageUrl)
+      .build()
+      .toString()
   }
 
   Logger.e(TAG, "Unknown kind of broken image url: \"$imageUrl\". If you see this report it to devs!")

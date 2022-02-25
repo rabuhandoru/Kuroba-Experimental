@@ -78,7 +78,7 @@ import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.getString
 import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.inflate
 import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.showToast
 import com.github.k1rakishou.chan.utils.BackgroundUtils
-import com.github.k1rakishou.chan.utils.awaitUntilGloballyLaidOut
+import com.github.k1rakishou.chan.utils.awaitUntilGloballyLaidOutAndGetSize
 import com.github.k1rakishou.chan.utils.setBackgroundColorFast
 import com.github.k1rakishou.chan.utils.setVisibilityFast
 import com.github.k1rakishou.common.AndroidUtils
@@ -471,14 +471,14 @@ class ThreadLayout @JvmOverloads constructor(
     }
 
     val initial = visible != Visible.THREAD
-    loadView.awaitUntilGloballyLaidOut(waitForWidth = true)
+    val (width, _) = loadView.awaitUntilGloballyLaidOutAndGetSize(waitForWidth = true)
 
     if (refreshPostPopupHelperPosts && postPopupHelper.isOpen) {
       postPopupHelper.updateAllPosts(descriptor)
     }
 
     val (showPostsResult, totalDuration) = measureTimedValue {
-      threadListLayout.showPosts(loadView.width, descriptor, filter, initial, additionalPostsToReparse)
+      threadListLayout.showPosts(width, descriptor, filter, initial, additionalPostsToReparse)
     }
 
     val applyFilterDuration = showPostsResult.applyFilterDuration
@@ -710,10 +710,10 @@ class ThreadLayout @JvmOverloads constructor(
     )
   }
 
-  override suspend fun openExternalThread(postDescriptor: PostDescriptor) {
-    Logger.d(TAG, "openExternalThread($postDescriptor)")
+  override suspend fun openExternalThread(postDescriptor: PostDescriptor, scrollToPost: Boolean) {
+    Logger.d(TAG, "openExternalThread($postDescriptor, $scrollToPost)")
 
-    callback.openExternalThread(postDescriptor)
+    callback.openExternalThread(postDescriptor, scrollToPost)
   }
 
   override suspend fun showCatalog(catalogDescriptor: ChanDescriptor.ICatalogDescriptor, animated: Boolean) {
@@ -1514,7 +1514,7 @@ class ThreadLayout @JvmOverloads constructor(
     suspend fun showThread(descriptor: ChanDescriptor.ThreadDescriptor, animated: Boolean)
     suspend fun showThreadWithoutFocusing(descriptor: ChanDescriptor.ThreadDescriptor, animated: Boolean)
     suspend fun showPostsInExternalThread(postDescriptor: PostDescriptor, isPreviewingCatalogThread: Boolean)
-    suspend fun openExternalThread(postDescriptor: PostDescriptor)
+    suspend fun openExternalThread(postDescriptor: PostDescriptor, scrollToPost: Boolean)
     suspend fun showCatalogWithoutFocusing(catalogDescriptor: ChanDescriptor.ICatalogDescriptor, animated: Boolean)
     suspend fun showCatalog(catalogDescriptor: ChanDescriptor.ICatalogDescriptor, animated: Boolean)
     suspend fun setCatalog(catalogDescriptor: ChanDescriptor.ICatalogDescriptor, animated: Boolean)

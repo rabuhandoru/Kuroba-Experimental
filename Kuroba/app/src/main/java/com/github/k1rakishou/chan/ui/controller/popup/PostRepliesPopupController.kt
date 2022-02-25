@@ -15,7 +15,7 @@ import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils
 import com.github.k1rakishou.chan.utils.BackgroundUtils
 import com.github.k1rakishou.chan.utils.RecyclerUtils
 import com.github.k1rakishou.chan.utils.RecyclerUtils.restoreScrollPosition
-import com.github.k1rakishou.chan.utils.awaitUntilGloballyLaidOut
+import com.github.k1rakishou.chan.utils.awaitUntilGloballyLaidOutAndGetSize
 import com.github.k1rakishou.common.mutableListWithCap
 import com.github.k1rakishou.core_logger.Logger
 import com.github.k1rakishou.model.data.descriptor.ChanDescriptor
@@ -24,13 +24,14 @@ import com.github.k1rakishou.model.data.post.ChanPost
 import com.github.k1rakishou.model.data.post.PostIndexed
 import com.github.k1rakishou.persist_state.IndexAndTop
 import kotlinx.coroutines.launch
-import java.util.*
 
 class PostRepliesPopupController(
   context: Context,
   postPopupHelper: PostPopupHelper,
   postCellCallback: PostCellInterface.PostCellCallback
 ) : BasePostPopupController<PostRepliesPopupController.PostRepliesPopupData>(context, postPopupHelper, postCellCallback) {
+  private var dataView: ViewGroup? = null
+
   override var displayingData: PostRepliesPopupData? = null
 
   private val scrollListener = object : RecyclerView.OnScrollListener() {
@@ -49,8 +50,16 @@ class PostRepliesPopupController(
   override fun onDestroy() {
     super.onDestroy()
 
+    dataView = null
+
     if (postsViewInitialized) {
       postsView.removeOnScrollListener(scrollListener)
+    }
+  }
+
+  override fun cleanup() {
+    if (postsViewInitialized) {
+      (postsView.adapter as? PostRepliesAdapter)?.cleanup()
     }
   }
 
@@ -77,10 +86,44 @@ class PostRepliesPopupController(
   ): ViewGroup {
     BackgroundUtils.ensureMainThread()
 
+    val repliesAdapter = getRepliesAdapterOrInitializeEverything(data, chanDescriptor)
+
+    mainScope.launch {
+      val (width, _) = postsView.awaitUntilGloballyLaidOutAndGetSize(waitForWidth = true)
+
+      val retainedPosts = postHideHelper.get().processPostFilters(chanDescriptor, data.posts, mutableSetOf())
+        .safeUnwrap { error ->
+          Logger.e(TAG, "postHideHelper.filterHiddenPosts error", error)
+          return@launch
+        }
+
+      val indexedPosts = indexPosts(chanDescriptor, retainedPosts)
+      repliesAdapter.setOrUpdateData(
+        postCellDataWidthNoPaddings = width,
+        postIndexedList = indexedPosts,
+        theme = themeEngine.chanTheme
+      )
+
+      restoreScrollPosition(data.forPostWithDescriptor)
+    }
+
+    return dataView!!
+  }
+
+  private fun getRepliesAdapterOrInitializeEverything(
+    data: PostRepliesPopupData,
+    chanDescriptor: ChanDescriptor
+  ): PostRepliesAdapter {
+    if (postsViewInitialized && postsView.adapter is PostRepliesAdapter && dataView != null) {
+      return postsView.adapter as PostRepliesAdapter
+    }
+
     val dataView = AppModuleAndroidUtils.inflate(context, R.layout.layout_post_popup_replies)
     dataView.id = R.id.post_popup_replies_view_id
+    postsView = dataView.findViewById(R.id.post_list)
 
     val repliesAdapter = PostRepliesAdapter(
+      recyclerView = postsView,
       postViewMode = data.postViewMode,
       postCellCallback = postCellCallback,
       chanDescriptor = chanDescriptor,
@@ -96,28 +139,14 @@ class PostRepliesPopupController(
 
     repliesAdapter.setHasStableIds(true)
 
-    postsView = dataView.findViewById(R.id.post_list)
     postsView.layoutManager = LinearLayoutManager(context)
     postsView.recycledViewPool.setMaxRecycledViews(PostRepliesAdapter.POST_REPLY_VIEW_TYPE, 0)
     postsView.adapter = repliesAdapter
     postsView.addOnScrollListener(scrollListener)
 
-    mainScope.launch {
-      postsView.awaitUntilGloballyLaidOut(waitForWidth = true)
+    this.dataView = dataView
 
-      val retainedPosts = postHideHelper.get().processPostFilters(chanDescriptor, data.posts, mutableSetOf())
-        .safeUnwrap { error ->
-          Logger.e(TAG, "postHideHelper.filterHiddenPosts error", error)
-          return@launch
-        }
-
-      val indexedPosts = indexPosts(chanDescriptor, retainedPosts)
-      repliesAdapter.setOrUpdateData(postsView.width, indexedPosts, themeEngine.chanTheme)
-
-      restoreScrollPosition(data.forPostWithDescriptor)
-    }
-
-    return dataView
+    return repliesAdapter
   }
 
   private fun indexPosts(

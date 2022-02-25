@@ -68,9 +68,6 @@ import java.util.*
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.regex.Matcher
 import javax.net.ssl.SSLException
-import kotlin.collections.ArrayList
-import kotlin.collections.HashMap
-import kotlin.collections.LinkedHashMap
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
 import kotlin.coroutines.resume
@@ -1042,30 +1039,42 @@ inline fun <T, R> Iterable<T>.chunkedMap(chunkSize: Int, mapper: (List<T>) -> Li
 }
 
 fun SpannableStringBuilder.setSpanSafe(span: CharacterStyle, start: Int, end: Int, flags: Int) {
-  setSpan(
-    span,
-    start.coerceAtLeast(0),
-    end.coerceAtMost(this.length),
-    flags
-  )
+  if (this.length <= 0) {
+    return
+  }
+
+  if (start >= end) {
+    return
+  }
+
+  val len = this.length.coerceAtLeast(0)
+  setSpan(span, start.coerceIn(0, len), end.coerceIn(0, len), flags)
 }
 
 fun SpannableString.setSpanSafe(span: CharacterStyle, start: Int, end: Int, flags: Int) {
-  setSpan(
-    span,
-    start.coerceAtLeast(0),
-    end.coerceAtMost(this.length),
-    flags
-  )
+  if (this.length <= 0) {
+    return
+  }
+
+  if (start >= end) {
+    return
+  }
+
+  val len = this.length.coerceAtLeast(0)
+  setSpan(span, start.coerceIn(0, len), end.coerceIn(0, len), flags)
 }
 
 fun Spannable.setSpanSafe(span: CharacterStyle, start: Int, end: Int, flags: Int) {
-  setSpan(
-    span,
-    start.coerceAtLeast(0),
-    end.coerceAtMost(this.length),
-    flags
-  )
+  if (this.length <= 0) {
+    return
+  }
+
+  if (start >= end) {
+    return
+  }
+
+  val len = this.length.coerceAtLeast(0)
+  setSpan(span, start.coerceIn(0, len), end.coerceIn(0, len), flags)
 }
 
 fun Int.mbytesToBytes(): Long {
@@ -1268,7 +1277,7 @@ fun Request.Builder.appendCookieHeader(value: String): Request.Builder {
   // Absolute retardiation but OkHttp doesn't allow doing it differently (or maybe I just don't know?)
   val fullCookieValue = request.newBuilder()
     .removeHeader(COOKIE_HEADER_NAME)
-    .addHeader(COOKIE_HEADER_NAME, "${cookies};${value}")
+    .addHeader(COOKIE_HEADER_NAME, "${cookies}; ${value}")
     .build()
     .header(COOKIE_HEADER_NAME)!!
 
