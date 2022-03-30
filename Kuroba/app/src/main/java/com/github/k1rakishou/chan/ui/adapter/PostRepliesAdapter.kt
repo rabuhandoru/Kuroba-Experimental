@@ -25,7 +25,6 @@ class PostRepliesAdapter(
   private val postViewMode: PostCellData.PostViewMode,
   private val postCellCallback: PostCellInterface.PostCellCallback,
   val chanDescriptor: ChanDescriptor,
-  private val clickedPostDescriptor: PostDescriptor?,
   _chanThreadViewableInfoManager: Lazy<ChanThreadViewableInfoManager>,
   _chanThreadManager: Lazy<ChanThreadManager>,
   _postFilterManager: Lazy<PostFilterManager>,
@@ -45,7 +44,7 @@ class PostRepliesAdapter(
     initialTheme = initialTheme
   )
 
-  init {
+  fun init(clickedPostDescriptor: PostDescriptor?) {
     threadCellData.postViewMode = postViewMode
     threadCellData.defaultIsCompact = false
     threadCellData.defaultBoardPostViewMode = ChanSettings.BoardPostViewMode.LIST
@@ -67,7 +66,6 @@ class PostRepliesAdapter(
     }
 
     threadCellData.cleanup()
-    notifyDataSetChanged()
   }
 
   override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ReplyViewHolder {
