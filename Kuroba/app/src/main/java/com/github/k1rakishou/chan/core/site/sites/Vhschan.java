@@ -14,7 +14,10 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-package com.github.k1rakishou.chan.core.site.sites.lainchan;
+package com.github.k1rakishou.chan.core.site.sites;
+
+import android.text.TextUtils;
+import android.webkit.MimeTypeMap;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -36,22 +39,22 @@ import com.github.k1rakishou.model.data.descriptor.SiteDescriptor;
 
 import org.jetbrains.annotations.NotNull;
 
+import java.util.Map;
+
 import okhttp3.HttpUrl;
 
 @DoNotStrip
-public class Lainchan extends CommonSite {
+public class Vhschan extends CommonSite {
     private final ChunkDownloaderSiteProperties chunkDownloaderSiteProperties;
-
-    public static final String SITE_NAME = "Lainchan";
+    public static final String SITE_NAME = "vhschan";
     public static final SiteDescriptor SITE_DESCRIPTOR = SiteDescriptor.Companion.create(SITE_NAME);
 
     public static final CommonSiteUrlHandler URL_HANDLER = new CommonSiteUrlHandler() {
-        private static final String ROOT = "https://lainchan.org/";
+        private static final String ROOT = "https://vhschan.org/";
 
-        @NonNull
         @Override
         public Class<? extends Site> getSiteClass() {
-            return Lainchan.class;
+            return Vhschan.class;
         }
 
         @Override
@@ -66,7 +69,7 @@ public class Lainchan extends CommonSite {
 
         @Override
         public String[] getNames() {
-            return new String[]{"lainchan"};
+            return new String[]{"vhschan"};
         }
 
         @Override
@@ -80,12 +83,42 @@ public class Lainchan extends CommonSite {
                         .addPathSegment(((ChanDescriptor.ThreadDescriptor) chanDescriptor).getThreadNo() + ".html")
                         .toString();
             } else {
+                //return getUrl().toString();
                 return null;
             }
         }
     };
 
-    public Lainchan() {
+    private class VhschanEndpoints extends VichanEndpoints {
+
+        public VhschanEndpoints(CommonSite commonSite, String rootUrl, String sysUrl) {
+            super(commonSite, rootUrl, sysUrl);
+        }
+
+        @NonNull
+        @Override
+        public HttpUrl thumbnailUrl(BoardDescriptor boardDescriptor, boolean spoiler, int customSpoilers, Map<String, String> arg) {
+            String tim = arg.get("tim");
+            String ext = arg.get("ext");
+
+            String mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext);
+            if (!TextUtils.isEmpty(mimeType) && !mimeType.startsWith("image/")) {
+                ext = "jpg";
+            }
+
+            if (!ext.startsWith(".")) {
+                ext = "." + ext;
+            }
+
+            return root.builder()
+                    .s(boardDescriptor.getBoardCode())
+                    .s("thumb")
+                    .s(tim + ext)
+                    .url();
+        }
+    }
+
+    public Vhschan() {
         chunkDownloaderSiteProperties = new ChunkDownloaderSiteProperties(true, true);
     }
 
@@ -93,40 +126,36 @@ public class Lainchan extends CommonSite {
     public void setup() {
         setEnabled(true);
         setName(SITE_NAME);
-        setIcon(SiteIcon.fromFavicon(getImageLoaderV2(), HttpUrl.parse("https://lainchan.org/favicon.ico")));
+        setIcon(SiteIcon.fromFavicon(getImageLoaderV2(), HttpUrl.parse("https://vhschan.org/stylesheets/favicon.ico")));
 
         setBoards(
-                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "λ"), "Programming"),
-                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "Δ"), "Do It Yourself"),
-                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "sec"), "Security"),
-                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "Ω"), "Technology"),
-                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "inter"), "Games and Interactive Media"),
-                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "lit"), "Literature"),
-                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "music"), "Musical and Audible Media"),
-                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "vis"), "Visual Media"),
-                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "hum"), "Humanity"),
-                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "drug"), "Drugs 3.0"),
-                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "zzz"), "Consciousness and Dreams"),
-                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "layer"), "layer"),
-                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "q"), "Questions and Complaints"),
-                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "r"), "Random"),
-                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "lain"), "Lain"),
-                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "culture"), "Culture 15 freshly bumped threads"),
-                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "psy"), "Psychopharmacology 15 freshly bumped threads"),
-                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "mega"), "15 freshly bumped threads")
+                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "b"), "Betamax"),
+                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "n64"), "Jogos"),
+                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "k7"), "Musicas"),
+                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "warhol"), "Artes"),
+                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "sebo"), "Cafe, livros e Londres"),
+                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "uhf"), "TV, Filmes e series"),
+                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "ego"), "how to dress well"),
+                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "meth"), "The krystal ship"),
+                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "oprah"), "baw"),
+                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "toth"), "pineal gland"),
+                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "win95"), "CyberTech"),
+                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "loverboy"), "Good Old-Fashioned Lover Boy"),
+                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "sac"), "Serviço de atendimento ao channer"),
+                ChanBoard.create(BoardDescriptor.create(siteDescriptor().getSiteName(), "Recentes"), "Recentes")
         );
 
         setResolvable(URL_HANDLER);
 
         setConfig(new CommonConfig() {
             @Override
-            public boolean siteFeature(@NonNull SiteFeature siteFeature) {
+            public boolean siteFeature(SiteFeature siteFeature) {
                 return super.siteFeature(siteFeature) || siteFeature == SiteFeature.POSTING;
             }
         });
 
-        setEndpoints(new VichanEndpoints(this, "https://lainchan.org", "https://lainchan.org"));
-        setActions(new LainchanActions(this, getProxiedOkHttpClient(), getSiteManager(), getReplyManager()));
+        setEndpoints(new VhschanEndpoints(this, "https://vhschan.org", "https://vhschan.org"));
+        setActions(new VichanActions(this, getProxiedOkHttpClient(), getSiteManager(), getReplyManager()));
         setApi(new VichanApi(getSiteManager(), getBoardManager(), this));
         setParser(new VichanCommentParser());
     }
