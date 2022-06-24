@@ -26,7 +26,6 @@ class ChanBoard(
   val codeTags: Boolean = false,
   @Deprecated("delete me")
   val preuploadCaptcha: Boolean = false,
-  @Deprecated("delete me")
   val countryFlags: Boolean = false,
   val mathTags: Boolean = false,
   @Deprecated("delete me")
@@ -103,19 +102,6 @@ class ChanBoard(
   fun siteName(): String =  boardDescriptor.siteName()
   fun boardCode(): String = boardDescriptor.boardCode
   fun formattedBoardCode(): String = "/${boardCode()}/"
-
-  fun boardSupportsFlagSelection(): Boolean {
-    val is4chan = boardDescriptor.siteDescriptor.is4chan()
-    if (is4chan && boardCode() == "pol") {
-      return true
-    }
-
-    if (is4chan && boardCode() == "mlp") {
-      return true
-    }
-
-    return false
-  }
 
   @Synchronized
   fun <T : ChanBoardMeta> updateChanBoardMeta(updater: (T?) -> T?) {
