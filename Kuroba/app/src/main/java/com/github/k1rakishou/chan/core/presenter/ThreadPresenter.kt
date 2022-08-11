@@ -1068,7 +1068,7 @@ class ThreadPresenter @Inject constructor(
   private fun onPostUpdatedWithNewContent(batchResult: LoaderBatchResult) {
     BackgroundUtils.ensureMainThread()
 
-    if (threadPresenterCallback != null && needUpdatePost(batchResult)) {
+    if (threadPresenterCallback != null && needUpdatePost(batchResult) && ::postUpdatesExecutor.isInitialized) {
       postUpdatesExecutor.post(item = batchResult.postDescriptor, timeout = 200) { collectedPostDescriptors ->
         val updatedPosts = chanThreadManager.getPosts(collectedPostDescriptors)
         if (updatedPosts.isEmpty()) {
@@ -2869,7 +2869,8 @@ class ThreadPresenter @Inject constructor(
         is PostReportResult.CaptchaRequired -> {
           // 2ch.hk does not require captcha?
         }
-        is PostReportResult.AuthRequired -> {
+        is PostReportResult.AuthRequired,
+        is PostReportResult.CloudFlareDetected -> {
           threadPresenterCallback?.showCaptchaController(
             chanDescriptor = post.postDescriptor.descriptor,
             replyMode = ReplyMode.ReplyModeSendWithoutCaptcha,

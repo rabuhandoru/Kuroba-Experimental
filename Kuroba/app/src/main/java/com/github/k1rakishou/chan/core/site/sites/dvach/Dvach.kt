@@ -2,6 +2,7 @@ package com.github.k1rakishou.chan.core.site.sites.dvach
 
 import com.github.k1rakishou.OptionSettingItem
 import com.github.k1rakishou.Setting
+import com.github.k1rakishou.chan.core.base.okhttp.CloudFlareHandlerInterceptor
 import com.github.k1rakishou.chan.core.net.JsonReaderRequest
 import com.github.k1rakishou.chan.core.site.ChunkDownloaderSiteProperties
 import com.github.k1rakishou.chan.core.site.ResolvedChanDescriptor
@@ -99,13 +100,12 @@ class Dvach : CommonSite() {
   private val urlHandlerLazy = lazy { DvachSiteUrlHandler(domainUrl) }
   private val siteIconLazy = lazy { SiteIcon.fromFavicon(imageLoaderV2, "${domainString}/favicon.ico".toHttpUrl()) }
 
-  val antiSpamChallengeEndpoint by lazy {
-
+  override fun firewallChallengeEndpoint(): String? {
     // Lmao, apparently this is the only endpoint where there is no NSFW ads and the anti-spam
     // script is working. For some reason it doesn't work on https://2ch.hk anymore, meaning opening
     // https://2ch.hk doesn't trigger anti-spam script.
 
-    return@lazy "https://2ch.hk/challenge/"
+    return "https://2ch.hk/challenge/"
   }
 
   val captchaV2NoJs by lazy {
@@ -259,21 +259,14 @@ class Dvach : CommonSite() {
       return root.builder().s(thumbnail).url()
     }
 
-    fun dvachGetBoards(): HttpUrl {
-      return HttpUrl.Builder()
-        .scheme("https")
-        .host(siteHost)
-        .addPathSegment("makaba")
-        .addPathSegment("mobile.fcgi")
-        .addQueryParameter("task", "get_boards")
-        .build()
-    }
-
     override fun boards(): HttpUrl {
       return HttpUrl.Builder()
         .scheme("https")
         .host(siteHost)
-        .addPathSegment("boards.json")
+        .addPathSegment("api")
+        .addPathSegment("mobile")
+        .addPathSegment("v2")
+        .addPathSegment("boards")
         .build()
     }
 
@@ -317,9 +310,8 @@ class Dvach : CommonSite() {
       return HttpUrl.Builder()
         .scheme("https")
         .host(siteHost)
-        .addPathSegment("makaba")
-        .addPathSegment("posting.fcgi")
-        .addQueryParameter("json", "1")
+        .addPathSegment("user")
+        .addPathSegment("posting")
         .build()
     }
 
@@ -327,8 +319,9 @@ class Dvach : CommonSite() {
       return HttpUrl.Builder()
         .scheme("https")
         .host(siteHost)
-        .addPathSegment("makaba")
-        .addPathSegment("makaba.fcgi")
+        .addPathSegment("user")
+        .addPathSegment("passlogin")
+        .addQueryParameter("json", "1")
         .build()
     }
 
@@ -543,6 +536,7 @@ class Dvach : CommonSite() {
         site = this@Dvach,
         replyChanDescriptor = replyChanDescriptor,
         replyMode = replyMode,
+        moshi = moshi,
         replyManager = replyManager
       )
 
@@ -576,11 +570,10 @@ class Dvach : CommonSite() {
       val dvachEndpoints = endpoints() as DvachEndpoints
 
       return DvachBoardsRequest(
-        siteDescriptor(),
-        boardManager,
-        proxiedOkHttpClient,
-        dvachEndpoints.boards(),
-        dvachEndpoints.dvachGetBoards()
+        siteDescriptor = siteDescriptor(),
+        boardManager = boardManager,
+        proxiedOkHttpClient = proxiedOkHttpClient,
+        boardsRequestUrl = dvachEndpoints.boards(),
       ).execute()
     }
 
@@ -590,7 +583,7 @@ class Dvach : CommonSite() {
       passCode.set(dvachLoginRequest.passcode)
 
       val loginResult = httpCallManager.get().makeHttpCall(
-        DvachGetPassCookieHttpCall(this@Dvach, loginRequest)
+        DvachGetPassCookieHttpCall(this@Dvach, moshi, loginRequest)
       )
 
       when (loginResult) {
@@ -612,6 +605,10 @@ class Dvach : CommonSite() {
           }
         }
         is HttpCall.HttpCallResult.Fail -> {
+          if (loginResult.error is CloudFlareHandlerInterceptor.CloudFlareDetectedException) {
+            return SiteActions.LoginResult.CloudflareDetected
+          }
+
           return SiteActions.LoginResult.LoginError(loginResult.error.errorMessageOrClassName())
         }
       }

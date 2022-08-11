@@ -5,7 +5,7 @@ apply plugin: 'kotlin-kapt'
 apply plugin: 'de.undercouch.download'
 
 android {
-    compileSdkVersion 31
+    compileSdkVersion 32
 
     def getCommitHash = { ->
         def stdout = new ByteArrayOutputStream()
@@ -47,8 +47,8 @@ android {
         //          m -> Minor version
         //          p -> patch
         //          MmmPP
-        versionCode 10311
-        versionName "v1.3.11"
+        versionCode 10314
+        versionName "v1.3.14"
 
         applicationVariants.all { variant ->
             variant.outputs.all {
@@ -240,7 +240,6 @@ android {
         jvmTarget = JavaVersion.VERSION_1_8.toString()
         freeCompilerArgs = ["-Xopt-in=kotlin.RequiresOptIn"]
         jvmTarget = "1.8"
-        useIR = true
     }
 
     buildFeatures {

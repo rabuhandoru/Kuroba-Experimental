@@ -9,11 +9,11 @@ import androidx.work.WorkManager
 import androidx.work.await
 import com.github.k1rakishou.ChanSettings
 import com.github.k1rakishou.chan.core.manager.ThreadDownloadManager
+import com.github.k1rakishou.common.AndroidUtils
 import com.github.k1rakishou.common.AppConstants
 import com.github.k1rakishou.core_logger.Logger
 import dagger.Lazy
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.reactive.asFlow
@@ -48,6 +48,9 @@ class ThreadDownloadingCoordinator(
 
   private suspend fun onThreadDownloadUpdateEvent(event: ThreadDownloadManager.Event) {
     when (event) {
+      ThreadDownloadManager.Event.Initialized -> {
+        // no-op
+      }
       is ThreadDownloadManager.Event.StartDownload -> {
         startOrRestartThreadDownloading(appContext, appConstants, eager = true)
       }
@@ -69,6 +72,10 @@ class ThreadDownloadingCoordinator(
       appConstants: AppConstants,
       eager: Boolean
     ) {
+      if (AndroidUtils.getProcessType() != AndroidUtils.AppProcessType.Main) {
+        return
+      }
+
       val tag = appConstants.threadDownloadWorkUniqueTag
       Logger.d(TAG, "startOrRestartThreadDownloading() called tag=$tag, eager=$eager")
 
@@ -102,6 +109,10 @@ class ThreadDownloadingCoordinator(
       appContext: Context,
       appConstants: AppConstants,
     ) {
+      if (AndroidUtils.getProcessType() != AndroidUtils.AppProcessType.Main) {
+        return
+      }
+
       val tag = appConstants.threadDownloadWorkUniqueTag
       Logger.d(TAG, "cancelThreadDownloading() called tag=$tag")
 

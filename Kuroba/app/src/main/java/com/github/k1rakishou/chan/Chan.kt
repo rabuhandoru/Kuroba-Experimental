@@ -20,6 +20,7 @@ import android.app.Activity
 import android.app.Application
 import android.app.Application.ActivityLifecycleCallbacks
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.os.StrictMode
@@ -29,6 +30,7 @@ import com.github.k1rakishou.ChanSettings
 import com.github.k1rakishou.ChanSettingsInfo
 import com.github.k1rakishou.MpvSettings
 import com.github.k1rakishou.PersistableChanStateInfo
+import com.github.k1rakishou.chan.activity.CrashReportActivity
 import com.github.k1rakishou.chan.core.AppDependenciesInitializer
 import com.github.k1rakishou.chan.core.cache.downloader.FileCacheException
 import com.github.k1rakishou.chan.core.cache.downloader.FileCacheException.FileNotFoundOnTheServerException
@@ -44,7 +46,6 @@ import com.github.k1rakishou.chan.core.di.module.application.RepositoryModule
 import com.github.k1rakishou.chan.core.di.module.application.RoomDatabaseModule
 import com.github.k1rakishou.chan.core.di.module.application.SiteModule
 import com.github.k1rakishou.chan.core.di.module.application.UseCaseModule
-import com.github.k1rakishou.chan.core.diagnostics.AnrSupervisor
 import com.github.k1rakishou.chan.core.helper.ImageLoaderFileManagerWrapper
 import com.github.k1rakishou.chan.core.helper.ImageSaverFileManagerWrapper
 import com.github.k1rakishou.chan.core.helper.ThreadDownloaderFileManagerWrapper
@@ -53,7 +54,6 @@ import com.github.k1rakishou.chan.core.manager.ApplicationVisibilityManager
 import com.github.k1rakishou.chan.core.manager.ReportManager
 import com.github.k1rakishou.chan.core.manager.SettingsNotificationManager
 import com.github.k1rakishou.chan.ui.adapter.PostsFilter
-import com.github.k1rakishou.chan.ui.settings.SettingNotificationType
 import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils
 import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.getDimen
 import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.isDevBuild
@@ -91,8 +91,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.dnsoverhttps.DnsOverHttps
 import java.io.IOException
-import java.io.PrintWriter
-import java.io.StringWriter
 import java.net.InetAddress
 import java.util.*
 import javax.inject.Inject
@@ -108,7 +106,7 @@ class Chan : Application(), ActivityLifecycleCallbacks {
 
   private val coroutineExceptionHandler = CoroutineExceptionHandler { _, exception ->
     Logger.e(TAG, "Coroutine undeliverable exception", exception)
-    onUnhandledException(exception, exceptionToString(UnhandlerExceptionHandlerType.Coroutines, exception))
+    onUnhandledException(exception)
   }
 
   private val tagPrefix by lazy { getApplicationLabel().toString() + " | " }
@@ -123,8 +121,6 @@ class Chan : Application(), ActivityLifecycleCallbacks {
   lateinit var applicationVisibilityManager: Lazy<ApplicationVisibilityManager>
   @Inject
   lateinit var reportManager: ReportManager
-  @Inject
-  lateinit var anrSupervisor: AnrSupervisor
 
   private val normalDnsCreatorFactory: NormalDnsSelectorFactory = object : NormalDnsSelectorFactory {
     override fun createDnsSelector(okHttpClient: OkHttpClient): NormalDnsSelector {
@@ -326,21 +322,8 @@ class Chan : Application(), ActivityLifecycleCallbacks {
       .build()
       .also { component -> component.inject(this) }
 
-    anrSupervisor.start()
     appDependenciesInitializer.init()
     setupErrorHandlers()
-
-    reportManager.postTask {
-      if (ChanSettings.collectCrashLogs.get() || ChanSettings.collectANRs.get()) {
-        if (reportManager.hasReportFiles()) {
-          settingsNotificationManager.get().notify(SettingNotificationType.CrashLogOrAnr)
-        }
-
-        return@postTask
-      }
-    }
-
-    anrSupervisor.onApplicationLoaded()
   }
 
   private fun setupErrorHandlers() {
@@ -397,56 +380,70 @@ class Chan : Application(), ActivityLifecycleCallbacks {
       }
 
       Logger.e(TAG, "RxJava undeliverable exception", error)
-      onUnhandledException(error, exceptionToString(UnhandlerExceptionHandlerType.RxJava, error))
+      onUnhandledException(error)
     }
 
     Thread.setDefaultUncaughtExceptionHandler { thread, e ->
       // if there's any uncaught crash stuff, just dump them to the log and exit immediately
       Logger.e(TAG, "Unhandled exception in thread: ${thread.name}", e)
-      onUnhandledException(e, exceptionToString(UnhandlerExceptionHandlerType.Normal, e))
+      onUnhandledException(e)
       exitProcess(999)
     }
   }
 
-  private fun exceptionToString(type: UnhandlerExceptionHandlerType, e: Throwable): String {
-    try {
-      StringWriter().use { sw ->
-        PrintWriter(sw).use { pw ->
-          e.printStackTrace(pw)
-          val stackTrace = sw.toString()
+  private fun onUnhandledException(exception: Throwable) {
+    val message = extractExceptionMessage(exception)
+    val stacktrace = exception.stackTraceToString()
 
-          return when (type) {
-            UnhandlerExceptionHandlerType.Normal -> {
-              "Called from unhandled exception handler.\n$stackTrace"
-            }
-            UnhandlerExceptionHandlerType.RxJava -> {
-              "Called from RxJava onError handler.\n$stackTrace"
-            }
-            UnhandlerExceptionHandlerType.Coroutines -> {
-              "Called from Coroutines exception handler.\n$stackTrace"
-            }
-          }
-        }
+    val bundle = Bundle()
+      .apply {
+        putString(CrashReportActivity.EXCEPTION_CLASS_NAME_KEY, exception::class.java.name)
+        putString(CrashReportActivity.EXCEPTION_MESSAGE_KEY, message)
+        putString(CrashReportActivity.EXCEPTION_STACKTRACE_KEY, stacktrace)
       }
-    } catch (ex: IOException) {
-      throw RuntimeException("Error while trying to convert exception to string!", ex)
-    }
+
+    val intent = Intent(this, CrashReportActivity::class.java)
+    intent.putExtra(CrashReportActivity.EXCEPTION_BUNDLE_KEY, bundle)
+    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    startActivity(intent)
+
+    exitProcess(-1)
   }
 
-  private fun onUnhandledException(exception: Throwable, errorText: String) {
-    if (!isDevBuild()) {
-      if ("Debug crash" == exception.message) {
-        return
+  private fun extractExceptionMessage(exception: Throwable): String? {
+    var message = exception.message
+    var throwable: Throwable? = exception
+
+    val processed = IdentityHashMap<Throwable, Unit>()
+    processed.put(exception, Unit)
+
+    while (true) {
+      if (throwable == null) {
+        break
       }
 
-      if (isEmulator) {
-        return
+      val parentMessage = throwable.message
+      if (parentMessage.isNullOrEmpty()) {
+        break
+      }
+
+      throwable = throwable.cause
+
+      if (throwable != null && processed.contains(throwable)) {
+        break
+      }
+
+      val isAppStacktrace = throwable
+        ?.stackTrace
+        ?.any { stackTraceElement -> stackTraceElement.className.contains("com.github.k1rakishou") }
+        ?: false
+
+      if (isAppStacktrace) {
+        message = parentMessage
       }
     }
 
-    if (ChanSettings.collectCrashLogs.get()) {
-      reportManager.storeCrashLog(exception.message, errorText)
-    }
+    return message
   }
 
   private fun activityEnteredForeground() {
@@ -552,12 +549,6 @@ class Chan : Application(), ActivityLifecycleCallbacks {
     )
 
     return ImageLoaderFileManagerWrapper(fileManager)
-  }
-
-  private enum class UnhandlerExceptionHandlerType {
-    Normal,
-    RxJava,
-    Coroutines
   }
 
   override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
