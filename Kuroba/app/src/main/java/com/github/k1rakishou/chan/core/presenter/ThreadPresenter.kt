@@ -1095,8 +1095,8 @@ class ThreadPresenter @Inject constructor(
       error is ClientException -> {
         Logger.e(TAG, "onChanLoaderError($chanDescriptor) called, error=${error.errorMessageOrClassName()}")
       }
-      error.isCloudFlareError() -> {
-        Logger.e(TAG, "onChanLoaderError($chanDescriptor) called CloudFlareDetectedException")
+      error.isFirewallError() -> {
+        Logger.e(TAG, "onChanLoaderError($chanDescriptor) called FirewallDetectedException")
       }
       else -> {
         Logger.e(TAG, "onChanLoaderError($chanDescriptor) called", error)
@@ -2043,6 +2043,10 @@ class ThreadPresenter @Inject constructor(
               }
             }
             is PostLinkable.Value.ThreadOrPostLink -> {
+              if (postLinkableValue.threadId <= 0 || postLinkableValue.postId <= 0) {
+                return@post
+              }
+
               val postDescriptor = PostDescriptor.create(
                 siteName = site.name(),
                 boardCode = postLinkableValue.board,

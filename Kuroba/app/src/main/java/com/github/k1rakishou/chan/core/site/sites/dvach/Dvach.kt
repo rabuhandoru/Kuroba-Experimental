@@ -2,7 +2,6 @@ package com.github.k1rakishou.chan.core.site.sites.dvach
 
 import com.github.k1rakishou.OptionSettingItem
 import com.github.k1rakishou.Setting
-import com.github.k1rakishou.chan.core.base.okhttp.CloudFlareHandlerInterceptor
 import com.github.k1rakishou.chan.core.net.JsonReaderRequest
 import com.github.k1rakishou.chan.core.site.ChunkDownloaderSiteProperties
 import com.github.k1rakishou.chan.core.site.ResolvedChanDescriptor
@@ -60,6 +59,7 @@ import kotlinx.coroutines.flow.map
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.MultipartBody
 import okhttp3.Request
 import java.util.regex.Pattern
 
@@ -100,12 +100,11 @@ class Dvach : CommonSite() {
   private val urlHandlerLazy = lazy { DvachSiteUrlHandler(domainUrl) }
   private val siteIconLazy = lazy { SiteIcon.fromFavicon(imageLoaderV2, "${domainString}/favicon.ico".toHttpUrl()) }
 
-  override fun firewallChallengeEndpoint(): String? {
+  override fun firewallChallengeEndpoint(): HttpUrl {
     // Lmao, apparently this is the only endpoint where there is no NSFW ads and the anti-spam
     // script is working. For some reason it doesn't work on https://2ch.hk anymore, meaning opening
     // https://2ch.hk doesn't trigger anti-spam script.
-
-    return "https://2ch.hk/challenge/"
+    return "${domainString}/challenge/".toHttpUrl()
   }
 
   val captchaV2NoJs by lazy {
@@ -168,7 +167,7 @@ class Dvach : CommonSite() {
 
     settings.addAll(super.settings())
 
-    settings.add(SiteOptionsSetting("Captcha type", null, captchaType, mutableListOf("Javascript", "Noscript", "Invisible")))
+    settings.add(SiteOptionsSetting("Captcha type", null, "captcha_type", captchaType, mutableListOf("Javascript", "Noscript", "Invisible")))
     settings.add(SiteSetting.SiteStringSetting("User code cookie", null, userCodeCookie))
     settings.add(SiteSetting.SiteStringSetting("Anti-spam cookie", null, antiSpamCookie))
 
@@ -213,7 +212,10 @@ class Dvach : CommonSite() {
     setPostingLimitationInfo(
       postingLimitationInfoLazy = lazy {
         SitePostingLimitation(
-          postMaxAttachables = PasscodeDependantAttachablesCount(siteManager, 4),
+          postMaxAttachables = PasscodeDependantAttachablesCount(
+            siteManager = siteManager,
+            defaultMaxAttachablesPerPost = 4
+          ),
           postMaxAttachablesTotalSize = PasscodeDependantMaxAttachablesTotalSize(
             siteManager = siteManager
           )
@@ -350,9 +352,9 @@ class Dvach : CommonSite() {
       return HttpUrl.Builder()
         .scheme("https")
         .host(siteHost)
-        .addPathSegment("makaba")
-        .addPathSegment("makaba.fcgi")
-        .addQueryParameter("task", "search")
+        .addPathSegment("user")
+        .addPathSegment("search")
+        .addQueryParameter("json", "1")
         .build()
     }
 
@@ -368,6 +370,14 @@ class Dvach : CommonSite() {
       }
 
       return builder.build()
+    }
+
+    override fun icon(icon: String, arg: Map<String, String>?): HttpUrl {
+      return HttpUrl.Builder()
+        .scheme("https")
+        .host(siteHost)
+        .addPathSegment(requireNotNull(arg?.get("icon")) { "Bad arg map: $arg" })
+        .build()
     }
 
   }
@@ -479,6 +489,13 @@ class Dvach : CommonSite() {
 
     override fun modifyGetPasscodeInfoRequest(site: Dvach, requestBuilder: Request.Builder) {
       super.modifyGetPasscodeInfoRequest(site, requestBuilder)
+
+      addAntiSpamCookie(requestBuilder)
+      addUserCodeCookie(site, requestBuilder)
+    }
+
+    override fun modifyPagesRequest(site: Dvach, requestBuilder: Request.Builder) {
+      super.modifyPagesRequest(site, requestBuilder)
 
       addAntiSpamCookie(requestBuilder)
       addUserCodeCookie(site, requestBuilder)
@@ -599,16 +616,9 @@ class Dvach : CommonSite() {
             is DvachLoginResponse.Failure -> {
               SiteActions.LoginResult.LoginError(loginResponse.errorMessage)
             }
-            DvachLoginResponse.AntiSpamDetected -> {
-              SiteActions.LoginResult.AntiSpamDetected
-            }
           }
         }
         is HttpCall.HttpCallResult.Fail -> {
-          if (loginResult.error is CloudFlareHandlerInterceptor.CloudFlareDetectedException) {
-            return SiteActions.LoginResult.CloudflareDetected
-          }
-
           return SiteActions.LoginResult.LoginError(loginResult.error.errorMessageOrClassName())
         }
       }
@@ -619,7 +629,11 @@ class Dvach : CommonSite() {
         return SiteActions.GetPasscodeInfoResult.NotLoggedIn
       }
 
-      if (!resetCached && passCodeInfo.isNotDefault()) {
+      if (resetCached) {
+        passCodeInfo.reset()
+      }
+
+      if (passCodeInfo.isNotDefault()) {
         val dvachPasscodeInfo = passCodeInfo.get()
 
         val maxAttachedFilesPerPost = dvachPasscodeInfo.files
@@ -635,6 +649,10 @@ class Dvach : CommonSite() {
         }
 
         // fallthrough
+      }
+
+      if (!resetCached) {
+        return SiteActions.GetPasscodeInfoResult.NotAllowedToRefreshFromNetwork
       }
 
       val passcodeInfoCall = DvachGetPasscodeInfoHttpCall(this@Dvach, gson)
@@ -691,32 +709,32 @@ class Dvach : CommonSite() {
     override suspend fun pages(
       board: ChanBoard
     ): JsonReaderRequest.JsonReaderResponse<BoardPages> {
-      val request = Request.Builder()
+      val requestBuilder = Request.Builder()
         .url(endpoints().pages(board))
         .get()
-        .build()
+
+      this@Dvach.requestModifier().modifyPagesRequest(this@Dvach, requestBuilder)
 
       return DvachPagesRequest(
         board,
-        request,
+        requestBuilder.build(),
         proxiedOkHttpClient
       ).execute()
     }
 
     override suspend fun <T : SearchParams> search(searchParams: T): SearchResult {
       val dvachSearchParams = searchParams as DvachSearchParams
-
-      // https://2ch.hk/makaba/makaba.fcgi?task=search&board=mobi&find=poco%20x3&json=1
       val searchUrl = requireNotNull(endpoints().search())
-        .newBuilder()
-        .addQueryParameter("board", dvachSearchParams.boardCode)
-        .addQueryParameter("find", dvachSearchParams.query)
-        .addQueryParameter("json", "1")
-        .build()
+
+      val formBuilder = MultipartBody.Builder().apply {
+        setType(MultipartBody.FORM)
+        addFormDataPart("board", dvachSearchParams.boardCode)
+        addFormDataPart("text", dvachSearchParams.query)
+      }
 
       val requestBuilder = Request.Builder()
         .url(searchUrl)
-        .get()
+        .post(formBuilder.build())
 
       this@Dvach.requestModifier().modifySearchGetRequest(this@Dvach, requestBuilder)
 

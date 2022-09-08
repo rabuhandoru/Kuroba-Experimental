@@ -52,7 +52,13 @@ class ThirdEyeManager(
 
   private val thirdEyeSettingsLazy = LazySuspend<ThirdEyeSettings> {
     try {
-      loadThirdEyeSettings()
+      val thirdEyeSettings = loadThirdEyeSettings()
+      if (thirdEyeSettings != null) {
+        return@LazySuspend thirdEyeSettings
+      }
+
+      Logger.d(TAG, "loadThirdEyeSettings() thirdEyeSettings == null")
+      return@LazySuspend ThirdEyeSettings()
     } catch (error: Throwable) {
       Logger.e(TAG, "loadThirdEyeSettings() error!", error)
       ThirdEyeSettings()
@@ -242,7 +248,10 @@ class ThirdEyeManager(
           throw error
         }
 
-        thirdEyeSettingsLazy.update(loadThirdEyeSettings())
+        val settings = loadThirdEyeSettings()
+          ?: return@Try
+
+        thirdEyeSettingsLazy.update(settings)
 
         return@Try
       }.logError(tag = TAG)
@@ -293,10 +302,10 @@ class ThirdEyeManager(
     }
   }
 
-  private suspend fun loadThirdEyeSettings(): ThirdEyeSettings {
+  private suspend fun loadThirdEyeSettings(): ThirdEyeSettings? {
     return withContext(Dispatchers.IO) {
       if (!thirdEyeSettingsFile.exists()) {
-        throw IOException("thirdEyeSettingsFile does not exist!")
+        return@withContext null
       }
 
       val thirdEyeSettings = thirdEyeSettingsFile.source().buffer().use { bufferedSource ->

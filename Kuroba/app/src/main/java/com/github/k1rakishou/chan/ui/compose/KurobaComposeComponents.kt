@@ -80,6 +80,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.DefaultAlpha
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -136,16 +137,25 @@ fun KurobaComposeProgressIndicator(modifier: Modifier = DefaultFillMaxSizeModifi
 
 @Composable
 fun KurobaComposeErrorMessage(error: Throwable, modifier: Modifier = DefaultFillMaxSizeModifier) {
-  KurobaComposeErrorMessage(error.errorMessageOrClassName(), modifier)
+  val errorMessage = remember(key1 = error) { error.errorMessageOrClassName() }
+
+  KurobaComposeErrorMessage(
+    errorMessage = errorMessage,
+    modifier = modifier
+  )
 }
 
 @Composable
 fun KurobaComposeErrorMessage(errorMessage: String, modifier: Modifier = DefaultFillMaxSizeModifier) {
-  Box(modifier = Modifier
-    .padding(8.dp)
-    .then(modifier)
+  Box(
+    modifier = Modifier
+      .padding(8.dp)
+      .then(modifier)
   ) {
-    KurobaComposeText(errorMessage, modifier = Modifier.align(Alignment.Center))
+    KurobaComposeText(
+      modifier = Modifier.align(Alignment.Center),
+      text = errorMessage
+    )
   }
 }
 
@@ -780,6 +790,43 @@ fun KurobaComposeIcon(
   )
 }
 
+@Composable
+fun KurobaComposeClickableIcon(
+  @DrawableRes drawableId: Int,
+  modifier: Modifier = Modifier,
+  enabled: Boolean = true,
+  colorBehindIcon: Color? = null,
+  onClick: () -> Unit
+) {
+  val chanTheme = LocalChanTheme.current
+  val tintColor = remember(key1 = chanTheme) {
+    if (colorBehindIcon == null) {
+      Color(ThemeEngine.resolveDrawableTintColor(chanTheme))
+    } else {
+      Color(ThemeEngine.resolveDrawableTintColor(ThemeEngine.isDarkColor(colorBehindIcon.value)))
+    }
+  }
+
+  val alpha = if (enabled) DefaultAlpha else ContentAlpha.disabled
+
+  val clickModifier = if (enabled) {
+    Modifier.kurobaClickable(
+      bounded = false,
+      onClick = { onClick() }
+    )
+  } else {
+    Modifier
+  }
+
+  Image(
+    modifier = clickModifier.then(modifier),
+    painter = painterResource(id = drawableId),
+    colorFilter = ColorFilter.tint(tintColor),
+    alpha = alpha,
+    contentDescription = null
+  )
+}
+
 private val defaultNoopClickCallback = { }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -834,7 +881,6 @@ fun KurobaComposeCardView(
   }
 }
 
-@OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun KurobaSearchInput(
   modifier: Modifier = Modifier,

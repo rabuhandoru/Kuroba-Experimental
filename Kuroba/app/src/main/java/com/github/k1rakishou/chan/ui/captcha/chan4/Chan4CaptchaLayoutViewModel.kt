@@ -1,11 +1,14 @@
 package com.github.k1rakishou.chan.ui.captcha.chan4
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
+import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import androidx.lifecycle.viewModelScope
 import com.github.k1rakishou.chan.core.base.BaseViewModel
 import com.github.k1rakishou.chan.core.base.okhttp.RealProxiedOkHttpClient
 import com.github.k1rakishou.chan.core.compose.AsyncData
@@ -15,9 +18,11 @@ import com.github.k1rakishou.chan.core.manager.SiteManager
 import com.github.k1rakishou.chan.core.site.SiteSetting
 import com.github.k1rakishou.chan.core.site.sites.chan4.Chan4
 import com.github.k1rakishou.chan.core.site.sites.chan4.Chan4CaptchaSettings
+import com.github.k1rakishou.common.BadStatusResponseException
+import com.github.k1rakishou.common.EmptyBodyResponseException
 import com.github.k1rakishou.common.ModularResult
 import com.github.k1rakishou.common.errorMessageOrClassName
-import com.github.k1rakishou.common.suspendConvertIntoJsonObjectWithAdapter
+import com.github.k1rakishou.common.suspendCall
 import com.github.k1rakishou.core_logger.Logger
 import com.github.k1rakishou.core_themes.ThemeEngine
 import com.github.k1rakishou.model.data.descriptor.ChanDescriptor
@@ -55,6 +60,8 @@ class Chan4CaptchaLayoutViewModel : BaseViewModel() {
   lateinit var moshi: Moshi
   @Inject
   lateinit var themeEngine: ThemeEngine
+  @Inject
+  lateinit var chan4CaptchaSolverHelper: Chan4CaptchaSolverHelper
 
   private var activeJob: Job? = null
   private var captchaTtlUpdateJob: Job? = null
@@ -74,7 +81,23 @@ class Chan4CaptchaLayoutViewModel : BaseViewModel() {
 
   private val captchaInfoCache = mutableMapOf<ChanDescriptor, CaptchaInfo>()
 
-  var captchaInfoToShow = mutableStateOf<AsyncData<CaptchaInfo>>(AsyncData.NotInitialized)
+  private var _captchaInfoToShow = mutableStateOf<AsyncData<CaptchaInfo>>(AsyncData.NotInitialized)
+  val captchaInfoToShow: State<AsyncData<CaptchaInfo>>
+    get() = _captchaInfoToShow
+
+  @Volatile private var notifiedUserAboutCaptchaSolver = false
+
+  private var _captchaSolverInstalled = mutableStateOf<Boolean>(false)
+  val captchaSolverInstalled: State<Boolean>
+    get() = _captchaSolverInstalled
+
+  private var _solvingInProgress = mutableStateOf<Boolean>(false)
+  val solvingInProgress: State<Boolean>
+    get() = _solvingInProgress
+
+  private val _notifyUserAboutCaptchaSolverErrorFlow = MutableSharedFlow<CaptchaSolverInfo>(extraBufferCapacity = 1)
+  val notifyUserAboutCaptchaSolverErrorFlow: SharedFlow<CaptchaSolverInfo>
+    get() = _notifyUserAboutCaptchaSolverErrorFlow.asSharedFlow()
 
   override fun injectDependencies(component: ViewModelComponent) {
     component.inject(this)
@@ -100,7 +123,7 @@ class Chan4CaptchaLayoutViewModel : BaseViewModel() {
   }
 
   fun resetCaptchaForced(chanDescriptor: ChanDescriptor) {
-    captchaInfoToShow.value = AsyncData.NotInitialized
+    _captchaInfoToShow.value = AsyncData.NotInitialized
     getCachedCaptchaInfoOrNull(chanDescriptor)?.reset()
 
     captchaInfoCache.remove(chanDescriptor)
@@ -114,7 +137,7 @@ class Chan4CaptchaLayoutViewModel : BaseViewModel() {
   }
 
   @Suppress("MoveVariableDeclarationIntoWhen")
-  fun requestCaptcha(chanDescriptor: ChanDescriptor, forced: Boolean) {
+  fun requestCaptcha(context: Context, chanDescriptor: ChanDescriptor, forced: Boolean) {
     activeJob?.cancel()
     activeJob = null
 
@@ -122,6 +145,7 @@ class Chan4CaptchaLayoutViewModel : BaseViewModel() {
     captchaTtlUpdateJob = null
 
     val prevCaptchaInfo = getCachedCaptchaInfoOrNull(chanDescriptor)
+    val appContext = context
 
     if (!forced
       && prevCaptchaInfo != null
@@ -130,7 +154,7 @@ class Chan4CaptchaLayoutViewModel : BaseViewModel() {
       Logger.d(TAG, "requestCaptcha() old captcha is still fine, " +
         "ttl: ${prevCaptchaInfo.ttlMillis()}, chanDescriptor=$chanDescriptor")
 
-      captchaInfoToShow.value = AsyncData.Data(prevCaptchaInfo)
+      _captchaInfoToShow.value = AsyncData.Data(prevCaptchaInfo)
       startOrRestartCaptchaTtlUpdateTask(chanDescriptor)
 
       return
@@ -145,10 +169,20 @@ class Chan4CaptchaLayoutViewModel : BaseViewModel() {
     captchaInfoCache.remove(chanDescriptor)
 
     activeJob = mainScope.launch(Dispatchers.Default) {
-      captchaInfoToShow.value = AsyncData.Loading
+      _captchaInfoToShow.value = AsyncData.Loading
       viewModelInitialized.awaitUntilInitialized()
 
-      val result = ModularResult.Try { requestCaptchaInternal(chanDescriptor) }
+      if (chan4CaptchaSettingsJson.get().useCaptchaSolver) {
+        val chan4CaptchaSolverInfo = chan4CaptchaSolverHelper.checkCaptchaSolverInstalled(appContext)
+        if (chan4CaptchaSolverInfo !is CaptchaSolverInfo.Installed && !notifiedUserAboutCaptchaSolver) {
+          notifiedUserAboutCaptchaSolver = true
+          _notifyUserAboutCaptchaSolverErrorFlow.emit(chan4CaptchaSolverInfo)
+        }
+
+        _captchaSolverInstalled.value = chan4CaptchaSolverInfo == CaptchaSolverInfo.Installed
+      }
+
+      val result = ModularResult.Try { requestCaptchaInternal(appContext, chanDescriptor) }
       when (result) {
         is ModularResult.Error -> {
           Logger.e(TAG, "requestCaptcha() error=${result.error.errorMessageOrClassName()}")
@@ -157,17 +191,17 @@ class Chan4CaptchaLayoutViewModel : BaseViewModel() {
           if (error is CaptchaRateLimitError) {
             waitUntilCaptchaRateLimitPassed(error.cooldownMs)
 
-            withContext(Dispatchers.Main) { requestCaptcha(chanDescriptor, forced = true) }
+            withContext(Dispatchers.Main) { requestCaptcha(appContext, chanDescriptor, forced = true) }
             return@launch
           }
 
-          captchaInfoToShow.value = AsyncData.Error(error)
+          _captchaInfoToShow.value = AsyncData.Error(error)
         }
         is ModularResult.Value -> {
           Logger.d(TAG, "requestCaptcha() success")
 
           captchaInfoCache[chanDescriptor] = result.value
-          captchaInfoToShow.value = AsyncData.Data(result.value)
+          _captchaInfoToShow.value = AsyncData.Data(result.value)
 
           startOrRestartCaptchaTtlUpdateTask(chanDescriptor)
         }
@@ -187,7 +221,7 @@ class Chan4CaptchaLayoutViewModel : BaseViewModel() {
 
       delay(1000L)
 
-      captchaInfoToShow.value = AsyncData.Error(CaptchaRateLimitError(remainingCooldownMs))
+      _captchaInfoToShow.value = AsyncData.Error(CaptchaRateLimitError(remainingCooldownMs))
       remainingCooldownMs -= 1000L
     }
   }
@@ -198,7 +232,7 @@ class Chan4CaptchaLayoutViewModel : BaseViewModel() {
 
     captchaTtlUpdateJob = mainScope.launch(Dispatchers.Main) {
       while (isActive) {
-        val captchaInfoAsyncData = captchaInfoToShow.value
+        val captchaInfoAsyncData = _captchaInfoToShow.value
 
         val captchaInfo = if (captchaInfoAsyncData !is AsyncData.Data) {
           resetCaptchaForced(chanDescriptor)
@@ -221,7 +255,7 @@ class Chan4CaptchaLayoutViewModel : BaseViewModel() {
     }
   }
 
-  private suspend fun requestCaptchaInternal(chanDescriptor: ChanDescriptor): CaptchaInfo {
+  private suspend fun requestCaptchaInternal(appContext: Context, chanDescriptor: ChanDescriptor): CaptchaInfo {
     val boardCode = chanDescriptor.boardDescriptor().boardCode
     val urlRaw = formatCaptchaUrl(chanDescriptor, boardCode)
 
@@ -238,11 +272,17 @@ class Chan4CaptchaLayoutViewModel : BaseViewModel() {
     val request = requestBuilder.build()
     val captchaInfoRawAdapter = moshi.adapter(CaptchaInfoRaw::class.java)
 
-    val captchaInfoRaw = proxiedOkHttpClient.okHttpClient().suspendConvertIntoJsonObjectWithAdapter(
-      request = request,
-      adapter = captchaInfoRawAdapter
-    ).unwrap()
+    val response = proxiedOkHttpClient.okHttpClient().suspendCall(request)
+    if (!response.isSuccessful) {
+      throw BadStatusResponseException(response.code)
+    }
 
+    val captchaInfoRawString = response.body?.string()
+    if (captchaInfoRawString == null) {
+      throw EmptyBodyResponseException()
+    }
+
+    val captchaInfoRaw = captchaInfoRawAdapter.fromJson(captchaInfoRawString)
     if (captchaInfoRaw == null) {
       throw IOException("Failed to convert json to CaptchaInfoRaw")
     }
@@ -260,57 +300,57 @@ class Chan4CaptchaLayoutViewModel : BaseViewModel() {
 
       return CaptchaInfo(
         chanDescriptor = chanDescriptor,
-        bgBitmapPainter = null,
-        imgBitmapPainter = null,
+        bgBitmap = null,
+        imgBitmap = null,
         challenge = NOOP_CHALLENGE,
         startedAt = System.currentTimeMillis(),
         ttlSeconds = captchaInfoRaw.ttlSeconds(),
-        bgInitialOffset = 0f,
         imgWidth = null,
-        bgWidth = null
+        bgWidth = null,
+        captchaInfoRawString = null,
+        captchaSolution = null
       )
     }
+
+    val captchaSolution = if (_captchaSolverInstalled.value) {
+      chan4CaptchaSolverHelper.autoSolveCaptcha(appContext, captchaInfoRawString, null)
+    } else {
+      null
+    }
     
-    val bgBitmapPainter = captchaInfoRaw.bg?.let { bgBase64Img ->
+    val bgBitmap = captchaInfoRaw.bg?.let { bgBase64Img ->
       val bgByteArray = Base64.decode(bgBase64Img, Base64.DEFAULT)
       val bitmap = BitmapFactory.decodeByteArray(bgByteArray, 0, bgByteArray.size)
 
       val bgImageBitmap = if (chan4CaptchaSettingsJson.get().sliderCaptchaUseContrastBackground) {
-        replaceColor(bitmap, 0xFFEEEEEEL.toInt(), themeEngine.chanTheme.accentColor).asImageBitmap()
+        replaceColor(
+          src = bitmap,
+          fromColor = CAPTCHA_DEFAULT_BG_COLOR.toArgb(),
+          targetColor = CAPTCHA_CONTRAST_BG_COLOR.toArgb()
+        )
       } else {
-        bitmap.asImageBitmap()
+        bitmap
       }
 
-      return@let BitmapPainter(bgImageBitmap)
+      return@let bgImageBitmap
     }
 
-    val imgBitmapPainter = captchaInfoRaw.img?.let { imgBase64Img ->
+    val imgBitmap = captchaInfoRaw.img?.let { imgBase64Img ->
       val bgByteArray = Base64.decode(imgBase64Img, Base64.DEFAULT)
-      val imgImageBitmap = BitmapFactory.decodeByteArray(bgByteArray, 0, bgByteArray.size).asImageBitmap()
-
-      return@let BitmapPainter(imgImageBitmap)
-    }
-
-    val bgInitialOffset = if (captchaInfoRaw.bgWidth != null && captchaInfoRaw.imgWidth != null) {
-      if (captchaInfoRaw.bgWidth > captchaInfoRaw.imgWidth) {
-        captchaInfoRaw.bgWidth - captchaInfoRaw.imgWidth
-      } else {
-        captchaInfoRaw.imgWidth - captchaInfoRaw.bgWidth
-      }
-    } else {
-      0
+      return@let BitmapFactory.decodeByteArray(bgByteArray, 0, bgByteArray.size)
     }
 
     return CaptchaInfo(
       chanDescriptor = chanDescriptor,
-      bgBitmapPainter = bgBitmapPainter,
-      imgBitmapPainter = imgBitmapPainter!!,
+      bgBitmap = bgBitmap,
+      imgBitmap = imgBitmap,
       challenge = captchaInfoRaw.challenge!!,
       startedAt = System.currentTimeMillis(),
       ttlSeconds = captchaInfoRaw.ttl!!,
-      bgInitialOffset = bgInitialOffset.toFloat(),
       imgWidth = captchaInfoRaw.imgWidth,
-      bgWidth = captchaInfoRaw.bgWidth
+      bgWidth = captchaInfoRaw.bgWidth,
+      captchaInfoRawString = captchaInfoRawString,
+      captchaSolution = captchaSolution
     )
   }
 
@@ -369,6 +409,37 @@ class Chan4CaptchaLayoutViewModel : BaseViewModel() {
     return captchaInfo
   }
 
+  fun solveCaptcha(context: Context, captchaInfoRawString: String, sliderOffset: Float) {
+    viewModelScope.launch {
+      val appContext = context.applicationContext
+
+      if (!_captchaSolverInstalled.value) {
+        return@launch
+      }
+
+      val currentCaptchaInfo = (_captchaInfoToShow.value as? AsyncData.Data)?.data
+        ?: return@launch
+
+      _solvingInProgress.value = true
+
+      val captchaSolution = try {
+        chan4CaptchaSolverHelper.autoSolveCaptcha(
+          context = appContext,
+          captchaInfoRawString = captchaInfoRawString,
+          sliderOffset = sliderOffset
+        )
+      } finally {
+        _solvingInProgress.value = false
+      }
+
+      if (captchaSolution == null) {
+        return@launch
+      }
+
+      currentCaptchaInfo.captchaSolution.value = captchaSolution
+    }
+  }
+
   @JsonClass(generateAdapter = true)
   data class CaptchaInfoRaw(
     @Json(name = "error")
@@ -408,29 +479,26 @@ class Chan4CaptchaLayoutViewModel : BaseViewModel() {
 
   class CaptchaInfo(
     val chanDescriptor: ChanDescriptor,
-    val bgBitmapPainter: BitmapPainter?,
-    val imgBitmapPainter: BitmapPainter?,
+    val bgBitmap: Bitmap?,
+    val imgBitmap: Bitmap?,
     val challenge: String,
     val startedAt: Long,
     val ttlSeconds: Int,
-    val bgInitialOffset: Float,
+    val bgWidth: Int?,
     val imgWidth: Int?,
-    val bgWidth: Int?
+    val captchaInfoRawString: String?,
+    captchaSolution: Chan4CaptchaSolverHelper.CaptchaSolution?
   ) {
-    var currentInputValue = mutableStateOf<String>("")
-    var sliderValue = mutableStateOf(0f)
+    val currentInputValue = mutableStateOf<String>("")
+    val sliderValue = mutableStateOf(0f)
+    val captchaSolution = mutableStateOf<Chan4CaptchaSolverHelper.CaptchaSolution?>(captchaSolution)
 
-    fun widthDiff(): Int? {
+    fun widthDiff(): Int {
       if (imgWidth == null || bgWidth == null) {
-        return null
+        return 0
       }
 
-      val diff = abs(imgWidth - bgWidth)
-      if (diff == 0) {
-        return null
-      }
-
-      return diff
+      return abs(imgWidth - bgWidth)
     }
 
     fun reset() {
@@ -438,7 +506,7 @@ class Chan4CaptchaLayoutViewModel : BaseViewModel() {
       sliderValue.value = 0f
     }
 
-    fun needSlider(): Boolean = bgBitmapPainter != null
+    fun needSlider(): Boolean = bgBitmap != null
 
     fun ttlMillis(): Long {
       val ttlMillis = ttlSeconds * 1000L
@@ -462,6 +530,9 @@ class Chan4CaptchaLayoutViewModel : BaseViewModel() {
 
     private const val MIN_TTL_TO_NOT_REQUEST_NEW_CAPTCHA = 25_000L // 25 seconds
     private const val MIN_TTL_TO_RESET_CAPTCHA = 5_000L // 5 seconds
+
+    val CAPTCHA_DEFAULT_BG_COLOR = Color(0xFFEEEEEEL.toInt())
+    val CAPTCHA_CONTRAST_BG_COLOR = Color(0xFFE0224E.toInt())
 
     const val NOOP_CHALLENGE = "noop"
   }

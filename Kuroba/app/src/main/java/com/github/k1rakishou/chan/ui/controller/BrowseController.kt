@@ -29,10 +29,13 @@ import com.github.k1rakishou.chan.core.base.SerializedCoroutineExecutor
 import com.github.k1rakishou.chan.core.di.component.activity.ActivityComponent
 import com.github.k1rakishou.chan.core.helper.DialogFactory
 import com.github.k1rakishou.chan.core.manager.BoardManager
+import com.github.k1rakishou.chan.core.manager.FirewallBypassManager
 import com.github.k1rakishou.chan.core.manager.HistoryNavigationManager
 import com.github.k1rakishou.chan.core.presenter.BrowsePresenter
 import com.github.k1rakishou.chan.core.presenter.ThreadPresenter
 import com.github.k1rakishou.chan.core.site.SiteResolver
+import com.github.k1rakishou.chan.features.bypass.CookieResult
+import com.github.k1rakishou.chan.features.bypass.SiteFirewallBypassController
 import com.github.k1rakishou.chan.features.drawer.MainControllerCallbacks
 import com.github.k1rakishou.chan.features.media_viewer.MediaLocation
 import com.github.k1rakishou.chan.features.media_viewer.MediaViewerActivity
@@ -57,7 +60,10 @@ import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.inflate
 import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.isDevBuild
 import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.sp
 import com.github.k1rakishou.chan.utils.SpannableHelper
+import com.github.k1rakishou.common.FirewallType
+import com.github.k1rakishou.common.errorMessageOrClassName
 import com.github.k1rakishou.common.isNotNullNorEmpty
+import com.github.k1rakishou.common.resumeValueSafe
 import com.github.k1rakishou.core_logger.Logger
 import com.github.k1rakishou.model.data.descriptor.BoardDescriptor
 import com.github.k1rakishou.model.data.descriptor.ChanDescriptor
@@ -70,6 +76,8 @@ import dagger.Lazy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import javax.inject.Inject
 
@@ -90,6 +98,8 @@ class BrowseController(
   lateinit var _historyNavigationManager: Lazy<HistoryNavigationManager>
   @Inject
   lateinit var _siteResolver: Lazy<SiteResolver>
+  @Inject
+  lateinit var _firewallBypassManager: Lazy<FirewallBypassManager>
 
   private val boardManager: BoardManager
     get() = _boardManager.get()
@@ -97,6 +107,8 @@ class BrowseController(
     get() = _historyNavigationManager.get()
   private val siteResolver: SiteResolver
     get() = _siteResolver.get()
+  private val firewallBypassManager: FirewallBypassManager
+    get() = _firewallBypassManager.get()
 
   private lateinit var serializedCoroutineExecutor: SerializedCoroutineExecutor
 
@@ -132,6 +144,33 @@ class BrowseController(
       val order = PostsFilter.Order.find(ChanSettings.boardOrder.get())
 
       threadLayout.presenter.setOrder(order, isManuallyChangedOrder = false)
+    }
+
+    mainScope.launch {
+      firewallBypassManager.showFirewallControllerEvents.collect { showFirewallControllerInfo ->
+        val alreadyPresenting = isAlreadyPresenting { controller ->
+          controller is SiteFirewallBypassController && controller.alive
+        }
+
+        if (alreadyPresenting) {
+          return@collect
+        }
+
+        val firewallType = showFirewallControllerInfo.firewallType
+        val urlToOpen = showFirewallControllerInfo.urlToOpen
+        val siteDescriptor = showFirewallControllerInfo.siteDescriptor
+        val onFinished = showFirewallControllerInfo.onFinished
+
+        try {
+          showSiteFirewallBypassController(
+            firewallType = firewallType,
+            urlToOpen = urlToOpen,
+            siteDescriptor = siteDescriptor
+          )
+        } finally {
+          onFinished.complete(Unit)
+        }
+      }
     }
   }
 
@@ -343,6 +382,7 @@ class BrowseController(
   @Suppress("MoveLambdaOutsideParentheses")
   private fun NavigationItem.MenuOverflowBuilder.addSortMenu(): NavigationItem.MenuOverflowBuilder {
     val currentOrder = PostsFilter.Order.find(ChanSettings.boardOrder.get())
+    val groupId = "catalog_sort"
 
     withNestedOverflow(ACTION_SORT, R.string.action_sort, true)
       .addNestedCheckableItem(
@@ -351,6 +391,7 @@ class BrowseController(
         true,
         currentOrder == PostsFilter.Order.BUMP,
         PostsFilter.Order.BUMP,
+        groupId,
         { subItem -> onSortItemClicked(subItem) }
       )
       .addNestedCheckableItem(
@@ -359,6 +400,7 @@ class BrowseController(
         true,
         currentOrder == PostsFilter.Order.REPLY,
         PostsFilter.Order.REPLY,
+        groupId,
         { subItem -> onSortItemClicked(subItem) }
       )
       .addNestedCheckableItem(
@@ -367,6 +409,7 @@ class BrowseController(
         true,
         currentOrder == PostsFilter.Order.IMAGE,
         PostsFilter.Order.IMAGE,
+        groupId,
         { subItem -> onSortItemClicked(subItem) }
       )
       .addNestedCheckableItem(
@@ -375,6 +418,7 @@ class BrowseController(
         true,
         currentOrder == PostsFilter.Order.NEWEST,
         PostsFilter.Order.NEWEST,
+        groupId,
         { subItem -> onSortItemClicked(subItem) }
       )
       .addNestedCheckableItem(
@@ -383,6 +427,7 @@ class BrowseController(
         true,
         currentOrder == PostsFilter.Order.OLDEST,
         PostsFilter.Order.OLDEST,
+        groupId,
         { subItem -> onSortItemClicked(subItem) }
       )
       .addNestedCheckableItem(
@@ -391,6 +436,7 @@ class BrowseController(
         true,
         currentOrder == PostsFilter.Order.MODIFIED,
         PostsFilter.Order.MODIFIED,
+        groupId,
         { subItem -> onSortItemClicked(subItem) }
       )
       .addNestedCheckableItem(
@@ -399,6 +445,7 @@ class BrowseController(
         true,
         currentOrder == PostsFilter.Order.ACTIVITY,
         PostsFilter.Order.ACTIVITY,
+        groupId,
         { subItem -> onSortItemClicked(subItem) }
       )
       .build()
@@ -1078,6 +1125,106 @@ class BrowseController(
     }
 
     return chanDescriptor.siteDescriptor().is4chan() || chanDescriptor.siteDescriptor().isDvach()
+  }
+
+  private suspend fun showSiteFirewallBypassController(
+    firewallType: FirewallType,
+    urlToOpen: HttpUrl,
+    siteDescriptor: SiteDescriptor
+  ) {
+    val cookieResult = suspendCancellableCoroutine<CookieResult> { continuation ->
+      val controller = SiteFirewallBypassController(
+        context = context,
+        firewallType = firewallType,
+        urlToOpen = urlToOpen.toString(),
+        onResult = { cookieResult -> continuation.resumeValueSafe(cookieResult) }
+      )
+
+      Logger.d(TAG, "presentController SiteFirewallBypassController " +
+        "(firewallType=${firewallType}, urlToOpen=${urlToOpen}, hashcode=${controller.hashCode()})")
+      presentController(controller)
+
+      continuation.invokeOnCancellation {
+        Logger.d(TAG, "stopPresenting SiteFirewallBypassController " +
+          "(firewallType=${firewallType}, urlToOpen=${urlToOpen}, hashcode=${controller.hashCode()})")
+
+        if (controller.alive) {
+          controller.stopPresenting()
+        }
+      }
+    }
+
+    when (firewallType) {
+      FirewallType.Cloudflare -> {
+        when (cookieResult) {
+          CookieResult.Canceled -> {
+            AppModuleAndroidUtils.showToast(
+              context,
+              getString(R.string.firewall_check_canceled, firewallType),
+              Toast.LENGTH_LONG
+            )
+          }
+          CookieResult.NotSupported -> {
+            AppModuleAndroidUtils.showToast(
+              context,
+              getString(R.string.firewall_check_not_supported, firewallType, siteDescriptor.siteName),
+              Toast.LENGTH_LONG
+            )
+          }
+          is CookieResult.Error -> {
+            val errorMsg = cookieResult.exception.errorMessageOrClassName()
+            AppModuleAndroidUtils.showToast(
+              context,
+              getString(R.string.firewall_check_failure, firewallType, errorMsg),
+              Toast.LENGTH_LONG
+            )
+          }
+          is CookieResult.CookieValue -> {
+            AppModuleAndroidUtils.showToast(
+              context,
+              getString(R.string.firewall_check_success, firewallType),
+              Toast.LENGTH_LONG
+            )
+          }
+        }
+      }
+      FirewallType.DvachAntiSpam -> {
+        when (cookieResult) {
+          CookieResult.Canceled -> {
+            AppModuleAndroidUtils.showToast(
+              context,
+              R.string.dvach_antispam_result_canceled,
+              Toast.LENGTH_LONG
+            )
+          }
+          CookieResult.NotSupported -> {
+            AppModuleAndroidUtils.showToast(
+              context,
+              getString(R.string.firewall_check_not_supported, firewallType, siteDescriptor.siteName),
+              Toast.LENGTH_LONG
+            )
+          }
+          is CookieResult.Error -> {
+            val errorMsg = cookieResult.exception.errorMessageOrClassName()
+            AppModuleAndroidUtils.showToast(
+              context,
+              getString(R.string.dvach_antispam_result_error, errorMsg),
+              Toast.LENGTH_LONG
+            )
+          }
+          is CookieResult.CookieValue -> {
+            AppModuleAndroidUtils.showToast(
+              context,
+              getString(R.string.dvach_antispam_result_success),
+              Toast.LENGTH_LONG
+            )
+          }
+        }
+      }
+      FirewallType.YandexSmartCaptcha -> {
+        // No-op. We only handle Yandex's captcha in one place (ImageSearchController)
+      }
+    }
   }
 
   companion object {

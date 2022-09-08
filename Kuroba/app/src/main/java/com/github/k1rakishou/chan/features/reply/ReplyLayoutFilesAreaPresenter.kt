@@ -46,7 +46,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -67,7 +66,10 @@ class ReplyLayoutFilesAreaPresenter(
   private val refreshFilesExecutor = DebouncingCoroutineExecutor(scope)
   private val fileChangeExecutor = SerializedCoroutineExecutor(scope)
   private val state = MutableStateFlow(ReplyLayoutFilesState(loading = true))
-  private var boundChanDescriptor: ChanDescriptor? = null
+
+  private var _boundChanDescriptor: ChanDescriptor? = null
+  val boundChanDescriptor: ChanDescriptor?
+    get() = _boundChanDescriptor
 
   fun listenForStateUpdates(): Flow<ReplyLayoutFilesState> = state.asStateFlow()
 
@@ -77,7 +79,7 @@ class ReplyLayoutFilesAreaPresenter(
       return
     }
 
-    this.boundChanDescriptor = chanDescriptor
+    this._boundChanDescriptor = chanDescriptor
 
     scope.launch {
       imagePickHelper.get().listenForNewPickedFiles()
@@ -93,7 +95,7 @@ class ReplyLayoutFilesAreaPresenter(
   }
 
   fun unbindChanDescriptor() {
-    this.boundChanDescriptor = null
+    this._boundChanDescriptor = null
   }
 
   fun pickLocalFile(showFilePickerChooser: Boolean) {
@@ -104,7 +106,7 @@ class ReplyLayoutFilesAreaPresenter(
 
     pickFilesExecutor.post {
       handleStateUpdate {
-        val chanDescriptor = boundChanDescriptor
+        val chanDescriptor = _boundChanDescriptor
           ?: return@handleStateUpdate
 
         val granted = requestPermissionIfNeededSuspend()
@@ -147,20 +149,21 @@ class ReplyLayoutFilesAreaPresenter(
           return@handleStateUpdate
         }
 
-        val replyFile = (pickedFileResult as PickedFile.Result).replyFiles.first()
+        val replyFiles = (pickedFileResult as PickedFile.Result).replyFiles
+        replyFiles.forEach { replyFile ->
+          val replyFileMeta = replyFile.getReplyFileMeta().safeUnwrap { error ->
+            Logger.e(TAG, "imagePickHelper.pickLocalFile($chanDescriptor) getReplyFileMeta() error", error)
+            return@forEach
+          }
 
-        val replyFileMeta = replyFile.getReplyFileMeta().safeUnwrap { error ->
-          Logger.e(TAG, "imagePickHelper.pickLocalFile($chanDescriptor) getReplyFileMeta() error", error)
-          return@handleStateUpdate
-        }
-
-        val maxAllowedFilesPerPost = getMaxAllowedFilesPerPost(chanDescriptor)
-        if (maxAllowedFilesPerPost != null && canAutoSelectFile(maxAllowedFilesPerPost).unwrap()) {
-          replyManager.get().updateFileSelection(
-            fileUuid = replyFileMeta.fileUuid,
-            selected = true,
-            notifyListeners = false
-          )
+          val maxAllowedFilesPerPost = getMaxAllowedFilesPerPost(chanDescriptor)
+          if (maxAllowedFilesPerPost != null && canAutoSelectFile(maxAllowedFilesPerPost).unwrap()) {
+            replyManager.get().updateFileSelection(
+              fileUuid = replyFileMeta.fileUuid,
+              selected = true,
+              notifyListeners = false
+            )
+          }
         }
 
         Logger.d(TAG, "pickNewLocalFile() success")
@@ -170,6 +173,14 @@ class ReplyLayoutFilesAreaPresenter(
   }
 
   fun pickRemoteFile(url: String) {
+    pickOneOfRemoteFiles(listOf(url))
+  }
+
+  fun pickOneOfRemoteFiles(urls: List<String>) {
+    if (urls.isEmpty()) {
+      return
+    }
+
     if (AppModuleAndroidUtils.checkDontKeepActivitiesSettingEnabledForWarningDialog(context)) {
       withViewNormal { onDontKeepActivitiesSettingDetected() }
       return
@@ -177,7 +188,7 @@ class ReplyLayoutFilesAreaPresenter(
 
     pickFilesExecutor.post {
       handleStateUpdate {
-        val chanDescriptor = boundChanDescriptor
+        val chanDescriptor = _boundChanDescriptor
           ?: return@handleStateUpdate
 
         val job = SupervisorJob()
@@ -186,7 +197,7 @@ class ReplyLayoutFilesAreaPresenter(
         val input = RemoteFilePicker.RemoteFilePickerInput(
           notifyListeners = false,
           replyChanDescriptor = chanDescriptor,
-          imageUrl = url,
+          imageUrls = urls,
           showLoadingView = { textId -> withView { showLoadingView(cancellationFunc, textId) } },
           hideLoadingView = { withView { hideLoadingView() } }
         )
@@ -200,33 +211,29 @@ class ReplyLayoutFilesAreaPresenter(
           }
 
         if (pickedFileResult is PickedFile.Failure) {
-          Logger.e(
-            TAG, "pickRemoteFile() error, " +
-              "pickedFileResult=${pickedFileResult.reason.errorMessageOrClassName()}"
+          Logger.e(TAG,
+            "pickRemoteFile() error, pickedFileResult=${pickedFileResult.reason.errorMessageOrClassName()}"
           )
 
           withView { showFilePickerErrorToast(pickedFileResult.reason) }
           return@handleStateUpdate
         }
 
-        val replyFile = (pickedFileResult as PickedFile.Result).replyFiles.first()
+        val replyFiles = (pickedFileResult as PickedFile.Result).replyFiles
+        replyFiles.forEach { replyFile ->
+          val replyFileMeta = replyFile.getReplyFileMeta().safeUnwrap { error ->
+            Logger.e(TAG, "imagePickHelper.pickRemoteFile($chanDescriptor) getReplyFileMeta() error", error)
+            return@forEach
+          }
 
-        val replyFileMeta = replyFile.getReplyFileMeta().safeUnwrap { error ->
-          Logger.e(
-            TAG,
-            "imagePickHelper.pickRemoteFile($chanDescriptor) getReplyFileMeta() error",
-            error
-          )
-          return@handleStateUpdate
-        }
-
-        val maxAllowedFilesPerPost = getMaxAllowedFilesPerPost(chanDescriptor)
-        if (maxAllowedFilesPerPost != null && canAutoSelectFile(maxAllowedFilesPerPost).unwrap()) {
-          replyManager.get().updateFileSelection(
-            fileUuid = replyFileMeta.fileUuid,
-            selected = true,
-            notifyListeners = false
-          )
+          val maxAllowedFilesPerPost = getMaxAllowedFilesPerPost(chanDescriptor)
+          if (maxAllowedFilesPerPost != null && canAutoSelectFile(maxAllowedFilesPerPost).unwrap()) {
+            replyManager.get().updateFileSelection(
+              fileUuid = replyFileMeta.fileUuid,
+              selected = true,
+              notifyListeners = false
+            )
+          }
         }
 
         Logger.d(TAG, "pickRemoteFile() success")
@@ -249,7 +256,7 @@ class ReplyLayoutFilesAreaPresenter(
   fun selectedFilesCount(): Int = replyManager.get().selectedFilesCount().unwrap()
 
   private fun boardSupportsSpoilers(): Boolean {
-    val chanDescriptor = boundChanDescriptor
+    val chanDescriptor = _boundChanDescriptor
       ?: return false
 
     return boardManager.get().byBoardDescriptor(chanDescriptor.boardDescriptor())
@@ -510,7 +517,7 @@ class ReplyLayoutFilesAreaPresenter(
   ) {
     refreshFilesExecutor.post(debounceTime) {
       handleStateUpdate {
-        val chanDescriptor = boundChanDescriptor
+        val chanDescriptor = _boundChanDescriptor
           ?: return@handleStateUpdate
 
         val attachables = enumerateReplyAttachables(chanDescriptor).unwrap()
@@ -534,7 +541,6 @@ class ReplyLayoutFilesAreaPresenter(
             
             val maxAllowedFilesPerPost = getMaxAllowedFilesPerPost(chanDescriptor)
             if (maxAllowedFilesPerPost != null) {
-              updateSendButtonState(selectedFilesCount, maxAllowedFilesPerPost)
               updateSelectedFilesCounter(selectedFilesCount, maxAllowedFilesPerPost, totalFilesCount)
             }
           }
@@ -800,7 +806,7 @@ class ReplyLayoutFilesAreaPresenter(
 
   fun onFileStatusRequested(fileUuid: UUID) {
     scope.launch {
-      val chanDescriptor = boundChanDescriptor
+      val chanDescriptor = _boundChanDescriptor
         ?: return@launch
 
       val clickedFile = state.value.attachables.firstOrNull { replyAttachable ->

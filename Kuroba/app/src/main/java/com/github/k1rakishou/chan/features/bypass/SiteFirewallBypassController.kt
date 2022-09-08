@@ -7,6 +7,7 @@ import android.webkit.WebSettings
 import android.webkit.WebStorage
 import android.webkit.WebView
 import android.webkit.WebViewDatabase
+import android.widget.Toast
 import androidx.constraintlayout.widget.ConstraintLayout
 import com.github.k1rakishou.chan.R
 import com.github.k1rakishou.chan.core.di.component.activity.ActivityComponent
@@ -15,16 +16,18 @@ import com.github.k1rakishou.chan.core.site.SiteSetting
 import com.github.k1rakishou.chan.ui.controller.BaseFloatingController
 import com.github.k1rakishou.chan.ui.theme.widget.ColorizableButton
 import com.github.k1rakishou.common.AppConstants
+import com.github.k1rakishou.common.FirewallType
 import com.github.k1rakishou.common.errorMessageOrClassName
 import com.github.k1rakishou.core_logger.Logger
 import com.github.k1rakishou.prefs.StringSetting
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 class SiteFirewallBypassController(
   context: Context,
-  private val firewallType: FirewallType,
+  val firewallType: FirewallType,
   private val urlToOpen: String,
   private val onResult: (CookieResult) -> Unit
 ) : BaseFloatingController(context) {
@@ -52,6 +55,13 @@ class SiteFirewallBypassController(
           cookieResultCompletableDeferred = cookieResultCompletableDeferred
         )
       }
+      FirewallType.YandexSmartCaptcha -> {
+        YandexSmartCaptchaCheckBypassWebClient(
+          originalRequestUrlHost = urlToOpen,
+          cookieManager = cookieManager,
+          cookieResultCompletableDeferred = cookieResultCompletableDeferred
+        )
+      }
       FirewallType.DvachAntiSpam -> {
         DvachAntiSpamCheckBypassWebClient(
           originalRequestUrlHost = urlToOpen,
@@ -69,14 +79,17 @@ class SiteFirewallBypassController(
   override fun getLayoutId(): Int = R.layout.controller_firewall_bypass
 
   override fun onCreate() {
-    try {
-      // Some users may have no WebView installed so this two methods may throw an exception
-      super.onCreate()
+    super.onCreate()
 
-      onCreateInternal()
-    } catch (error: Throwable) {
-      onResult(CookieResult.Error(BypassExceptions(error.errorMessageOrClassName())))
-      pop()
+    // Add a frame delay for the navigation stuff to completely load
+    mainScope.launch {
+      try {
+        // Some users may have no WebView installed
+        onCreateInternal()
+      } catch (error: Throwable) {
+        onResult(CookieResult.Error(BypassException(error.errorMessageOrClassName())))
+        pop()
+      }
     }
   }
 
@@ -137,7 +150,17 @@ class SiteFirewallBypassController(
   }
 
   private suspend fun waitAndHandleResult() {
-    val cookieResult = cookieResultCompletableDeferred.await()
+    val job = mainScope.launch {
+      delay(15_000L)
+      showToast(R.string.firewall_check_takes_too_long, Toast.LENGTH_LONG)
+    }
+
+    val cookieResult = try {
+      cookieResultCompletableDeferred.await()
+    } finally {
+      job.cancel()
+    }
+
     webView.stopLoading()
 
     when (cookieResult) {
@@ -191,6 +214,9 @@ class SiteFirewallBypassController(
 
         dvachAntiSpamCookieSetting.set(cookie)
       }
+      FirewallType.YandexSmartCaptcha -> {
+        // no-op
+      }
     }
 
     return true
@@ -206,7 +232,7 @@ class SiteFirewallBypassController(
   }
 
   companion object {
-    private const val TAG = "CloudFlareBypassController"
+    private const val TAG = "SiteFirewallBypassController"
     const val MAX_PAGE_LOADS_COUNT = 10
   }
 }

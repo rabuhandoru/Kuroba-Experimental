@@ -21,10 +21,14 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Color
+import android.graphics.Typeface
 import android.os.Build
 import android.text.Editable
 import android.text.Selection
 import android.text.TextWatcher
+import android.text.style.StrikethroughSpan
+import android.text.style.StyleSpan
+import android.text.style.UnderlineSpan
 import android.util.AttributeSet
 import android.view.ActionMode
 import android.view.GestureDetector
@@ -64,9 +68,6 @@ import com.github.k1rakishou.chan.core.presenter.ThreadPresenter
 import com.github.k1rakishou.chan.core.repository.BoardFlagInfoRepository
 import com.github.k1rakishou.chan.core.site.SiteAuthentication
 import com.github.k1rakishou.chan.core.site.SiteSetting
-import com.github.k1rakishou.chan.features.bypass.CookieResult
-import com.github.k1rakishou.chan.features.bypass.FirewallType
-import com.github.k1rakishou.chan.features.bypass.SiteFirewallBypassController
 import com.github.k1rakishou.chan.features.reply.ReplyPresenter.ReplyPresenterCallback
 import com.github.k1rakishou.chan.features.reply.data.Reply
 import com.github.k1rakishou.chan.ui.captcha.CaptchaHolder
@@ -95,27 +96,26 @@ import com.github.k1rakishou.chan.utils.setAlphaFast
 import com.github.k1rakishou.chan.utils.setEnabledFast
 import com.github.k1rakishou.chan.utils.setVisibilityFast
 import com.github.k1rakishou.common.AndroidUtils
+import com.github.k1rakishou.common.buildSpannableString
 import com.github.k1rakishou.common.findAllChildren
 import com.github.k1rakishou.common.isNotNullNorBlank
 import com.github.k1rakishou.common.isNotNullNorEmpty
 import com.github.k1rakishou.common.isPointInsideView
-import com.github.k1rakishou.common.resumeValueSafe
 import com.github.k1rakishou.common.selectionEndSafe
 import com.github.k1rakishou.common.selectionStartSafe
 import com.github.k1rakishou.core_logger.Logger
+import com.github.k1rakishou.core_spannable.PostLinkable
 import com.github.k1rakishou.core_themes.ThemeEngine
 import com.github.k1rakishou.core_themes.ThemeEngine.ThemeChangesListener
 import com.github.k1rakishou.model.data.descriptor.ChanDescriptor
 import com.github.k1rakishou.model.data.descriptor.ChanDescriptor.ThreadDescriptor
 import com.github.k1rakishou.model.data.descriptor.PostDescriptor
-import com.github.k1rakishou.model.data.descriptor.SiteDescriptor
 import com.github.k1rakishou.persist_state.ReplyMode
 import com.github.k1rakishou.prefs.OptionsSetting
 import com.github.k1rakishou.prefs.StringSetting
 import com.google.android.material.textview.MaterialTextView
 import dagger.Lazy
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
 import javax.inject.Inject
 
 class ReplyLayout @JvmOverloads constructor(
@@ -203,6 +203,10 @@ class ReplyLayout @JvmOverloads constructor(
   private lateinit var commentEqnButton: ColorizableBarButton
   private lateinit var commentMathButton: ColorizableBarButton
   private lateinit var commentSJISButton: ColorizableBarButton
+  private lateinit var commentBoldButton: ColorizableBarButton
+  private lateinit var commentItalicButton: ColorizableBarButton
+  private lateinit var commentUnderlineButton: ColorizableBarButton
+  private lateinit var commentStrikeThroughButton: ColorizableBarButton
   private lateinit var comment: ReplyInputEditText
   private lateinit var commentCounter: TextView
   private lateinit var fileCounter: TextView
@@ -405,6 +409,7 @@ class ReplyLayout @JvmOverloads constructor(
     } else {
       ThemeEngine.manipulateColor(themeEngine.chanTheme.backColor, .8f)
     }
+
     replyInputMessageHolder.setBackgroundColor(replyInputMessageHolderBackColor)
 
     commentCounter.setTextColor(themeEngine.chanTheme.textColorSecondary)
@@ -492,9 +497,14 @@ class ReplyLayout @JvmOverloads constructor(
     commentQuoteButton = replyInputLayout.findViewById(R.id.comment_quote)
     commentSpoilerButton = replyInputLayout.findViewById(R.id.comment_spoiler)
     commentCodeButton = replyInputLayout.findViewById(R.id.comment_code)
+    commentBoldButton = replyInputLayout.findViewById(R.id.comment_bold)
+    commentItalicButton = replyInputLayout.findViewById(R.id.comment_italic)
+    commentUnderlineButton = replyInputLayout.findViewById(R.id.comment_underline)
+    commentStrikeThroughButton = replyInputLayout.findViewById(R.id.comment_strikethrough)
     commentEqnButton = replyInputLayout.findViewById(R.id.comment_eqn)
     commentMathButton = replyInputLayout.findViewById(R.id.comment_math)
     commentSJISButton = replyInputLayout.findViewById(R.id.comment_sjis)
+
     comment = replyInputLayout.findViewById(R.id.comment)
     commentCounter = replyInputLayout.findViewById(R.id.comment_counter)
     fileCounter = replyInputLayout.findViewById(R.id.file_counter)
@@ -506,11 +516,16 @@ class ReplyLayout @JvmOverloads constructor(
     replyLayoutFilesArea = replyInputLayout.findViewById(R.id.reply_layout_files_area)
 
     passChildMotionEventsToDetectors()
+    setFormattingButtonsDescriptiveNames()
 
     // Setup reply layout views
     commentQuoteButton.setOnClickListener(this)
     commentSpoilerButton.setOnClickListener(this)
     commentCodeButton.setOnClickListener(this)
+    commentBoldButton.setOnClickListener(this)
+    commentItalicButton.setOnClickListener(this)
+    commentUnderlineButton.setOnClickListener(this)
+    commentStrikeThroughButton.setOnClickListener(this)
     commentMathButton.setOnClickListener(this)
     commentEqnButton.setOnClickListener(this)
     commentSJISButton.setOnClickListener(this)
@@ -573,6 +588,40 @@ class ReplyLayout @JvmOverloads constructor(
 
     setView(replyInputLayout)
     elevation = dp(4f).toFloat()
+  }
+
+  private fun setFormattingButtonsDescriptiveNames() {
+    commentSpoilerButton.text = buildSpannableString {
+      val text = "   "
+
+      append("[")
+      append(text, PostLinkable(text, PostLinkable.Value.StringValue(text), PostLinkable.Type.SPOILER), 0)
+      append("]")
+    }
+
+    commentBoldButton.text = buildSpannableString {
+      append("[")
+      append("b", StyleSpan(Typeface.BOLD), 0)
+      append("]")
+    }
+
+    commentItalicButton.text = buildSpannableString {
+      append("[")
+      append("i", StyleSpan(Typeface.ITALIC), 0)
+      append("]")
+    }
+
+    commentUnderlineButton.text = buildSpannableString {
+      append("[")
+      append("u", UnderlineSpan(), 0)
+      append("]")
+    }
+
+    commentStrikeThroughButton.text = buildSpannableString {
+      append("[")
+      append("s", StrikethroughSpan(), 0)
+      append("]")
+    }
   }
 
   fun onCreate(
@@ -703,32 +752,6 @@ class ReplyLayout @JvmOverloads constructor(
     threadListLayoutCallbacks?.presentController(controller)
   }
 
-  override suspend fun showFireWallBypassController(
-    firewallType: FirewallType,
-    siteDescriptor: SiteDescriptor
-  ): CookieResult {
-    BackgroundUtils.ensureMainThread()
-
-    val callbacks = threadListLayoutCallbacks
-      ?: return CookieResult.Canceled
-
-    val firewallChallengeEndpoint = siteManager.bySiteDescriptor(siteDescriptor)
-      ?.firewallChallengeEndpoint()
-      ?: return CookieResult.NotSupported
-
-    return suspendCancellableCoroutine { continuation ->
-      val controller = SiteFirewallBypassController(
-        context = context,
-        firewallType = firewallType,
-        urlToOpen = firewallChallengeEndpoint,
-        onResult = { cookieResult -> continuation.resumeValueSafe(cookieResult) }
-      )
-
-      callbacks.presentController(controller)
-      continuation.invokeOnCancellation { controller.stopPresenting() }
-    }
-  }
-
   override fun hideKeyboard() {
     AndroidUtils.hideKeyboard(this)
   }
@@ -765,32 +788,6 @@ class ReplyLayout @JvmOverloads constructor(
     BackgroundUtils.ensureMainThread()
 
     wrappingModeUpdateDebouncer.post({ updateWrappingMode() }, 250L)
-  }
-
-  override fun disableSendButton() {
-    BackgroundUtils.ensureMainThread()
-
-    if (!submit.isEnabled) {
-      return
-    }
-
-    submit.isEnabled = false
-    submit.isClickable = false
-    submit.isFocusable = false
-    submit.setAlphaFast(.4f)
-  }
-
-  override fun enableSendButton() {
-    BackgroundUtils.ensureMainThread()
-
-    if (submit.isEnabled) {
-      return
-    }
-
-    submit.isEnabled = true
-    submit.isClickable = true
-    submit.isFocusable = true
-    submit.setAlphaFast(1f)
   }
 
   override fun showReplyLayoutMessage(message: String, duration: Int) {
@@ -871,6 +868,10 @@ class ReplyLayout @JvmOverloads constructor(
           v === commentQuoteButton -> insertQuote()
           v === commentSpoilerButton -> insertTags("[spoiler]", "[/spoiler]")
           v === commentCodeButton -> insertTags("[code]", "[/code]")
+          v === commentBoldButton -> insertTags("[b]", "[/b]")
+          v === commentItalicButton -> insertTags("[i]", "[/i]")
+          v === commentUnderlineButton -> insertTags("[u]", "[/u]")
+          v === commentStrikeThroughButton -> insertTags("[s]", "[/s]")
           v === commentEqnButton -> insertTags("[eqn]", "[/eqn]")
           v === commentMathButton -> insertTags("[math]", "[/math]")
           v === commentSJISButton -> insertTags("[sjis]", "[/sjis]")
@@ -914,12 +915,14 @@ class ReplyLayout @JvmOverloads constructor(
       ?: return
 
     val floatingListMenuItems = mutableListOf<FloatingListMenuItem>()
+    val groupId = "flag_selector"
 
     flagInfoList.forEach { flagInfo ->
       floatingListMenuItems += CheckableFloatingListMenuItem(
         key = flagInfo.flagKey,
         name = "${flagInfo.flagKey} (${flagInfo.flagDescription})",
         value = flagInfo,
+        groupId = groupId,
         isCurrentlySelected = flagInfo.flagKey == lastUsedFlagInfo.flagKey
       )
     }
@@ -966,26 +969,37 @@ class ReplyLayout @JvmOverloads constructor(
     return true
   }
 
-  private fun insertTags(before: String, after: String): Boolean {
+  private fun insertTags(openTag: String, closeTag: String): Boolean {
+    val replyText = comment.text ?: ""
     val selectionStart = comment.selectionStartSafe()
     val selectionEnd = comment.selectionEndSafe()
+    val selectionCollapsed = selectionStart == selectionEnd
+    var newCursorPosition = 0
 
-    val hadSelectedText = selectionStart != selectionEnd
+    val replyTextWithNewTags = buildSpannableString {
+      val textBeforeSelection = replyText.subSequence(0, selectionStart)
+      val textAfterSelection = replyText.subSequence(selectionEnd, replyText.length)
 
-    comment.text?.insert(selectionEnd, after)
-    comment.text?.insert(selectionStart, before)
+      if (selectionCollapsed) {
+        append(textBeforeSelection)
+        append(openTag)
+        newCursorPosition = this.length
+        append(closeTag)
+        append(textAfterSelection)
+      } else {
+        val selectedText = replyText.subSequence(selectionStart, selectionEnd)
 
-    if (!hadSelectedText) {
-      // In case of when the tags are inserted and there is no selected text, the text cursor will be
-      // moved between the tags, e.g.:
-      // [tag]<cursor>[/tag]
-      // Otherwise it will remain at the end of the closing tag, e.g.:
-      // [tag]some text[/tag]<cursor>
-      val newSelectionCenter = selectionEnd - after.length
-      if (newSelectionCenter >= 0) {
-        comment.setSelection(newSelectionCenter)
+        append(textBeforeSelection)
+        append(openTag)
+        append(selectedText)
+        append(closeTag)
+        newCursorPosition = this.length
+        append(textAfterSelection)
       }
     }
+
+    comment.setText(replyTextWithNewTags, BufferType.EDITABLE)
+    comment.setSelection(newCursorPosition)
 
     return true
   }
@@ -1086,6 +1100,10 @@ class ReplyLayout @JvmOverloads constructor(
     commentQuoteButton.setEnabledFast(enable)
     commentSpoilerButton.setEnabledFast(enable)
     commentCodeButton.setEnabledFast(enable)
+    commentBoldButton.setEnabledFast(enable)
+    commentItalicButton.setEnabledFast(enable)
+    commentUnderlineButton.setEnabledFast(enable)
+    commentStrikeThroughButton.setEnabledFast(enable)
     commentEqnButton.setEnabledFast(enable)
     commentMathButton.setEnabledFast(enable)
     commentSJISButton.setEnabledFast(enable)
@@ -1269,6 +1287,26 @@ class ReplyLayout @JvmOverloads constructor(
     updateCommentButtonsHolderVisibility()
   }
 
+  override fun openCommentBoldButton(open: Boolean) {
+    commentBoldButton.visibility = if (open) VISIBLE else GONE
+    updateCommentButtonsHolderVisibility()
+  }
+
+  override fun openCommentItalicButton(open: Boolean) {
+    commentItalicButton.visibility = if (open) VISIBLE else GONE
+    updateCommentButtonsHolderVisibility()
+  }
+
+  override fun openCommentUnderlineButton(open: Boolean) {
+    commentUnderlineButton.visibility = if (open) VISIBLE else GONE
+    updateCommentButtonsHolderVisibility()
+  }
+
+  override fun openCommentStrikeThroughButton(open: Boolean) {
+    commentStrikeThroughButton.visibility = if (open) VISIBLE else GONE
+    updateCommentButtonsHolderVisibility()
+  }
+
   override fun openCommentEqnButton(open: Boolean) {
     commentEqnButton.visibility = if (open) VISIBLE else GONE
     updateCommentButtonsHolderVisibility()
@@ -1288,6 +1326,10 @@ class ReplyLayout @JvmOverloads constructor(
     if (commentQuoteButton.visibility == View.VISIBLE ||
       commentSpoilerButton.visibility == View.VISIBLE ||
       commentCodeButton.visibility == View.VISIBLE ||
+      commentBoldButton.visibility == View.VISIBLE ||
+      commentItalicButton.visibility == View.VISIBLE ||
+      commentUnderlineButton.visibility == View.VISIBLE ||
+      commentStrikeThroughButton.visibility == View.VISIBLE ||
       commentEqnButton.visibility == View.VISIBLE ||
       commentMathButton.visibility == View.VISIBLE ||
       commentSJISButton.visibility == View.VISIBLE

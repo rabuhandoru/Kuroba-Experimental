@@ -33,8 +33,6 @@ import com.github.k1rakishou.chan.core.site.Site
 import com.github.k1rakishou.chan.core.site.SiteAuthentication
 import com.github.k1rakishou.chan.core.site.SiteSetting
 import com.github.k1rakishou.chan.core.site.http.ReplyResponse
-import com.github.k1rakishou.chan.features.bypass.CookieResult
-import com.github.k1rakishou.chan.features.bypass.FirewallType
 import com.github.k1rakishou.chan.features.posting.PostResult
 import com.github.k1rakishou.chan.features.posting.PostingService
 import com.github.k1rakishou.chan.features.posting.PostingServiceDelegate
@@ -48,7 +46,6 @@ import com.github.k1rakishou.chan.ui.controller.FloatingListMenuController
 import com.github.k1rakishou.chan.ui.view.floating_menu.CheckableFloatingListMenuItem
 import com.github.k1rakishou.chan.ui.view.floating_menu.FloatingListMenuItem
 import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.getString
-import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils.showToast
 import com.github.k1rakishou.chan.utils.BackgroundUtils
 import com.github.k1rakishou.common.errorMessageOrClassName
 import com.github.k1rakishou.core_logger.Logger
@@ -57,9 +54,9 @@ import com.github.k1rakishou.model.data.board.ChanBoard
 import com.github.k1rakishou.model.data.descriptor.BoardDescriptor
 import com.github.k1rakishou.model.data.descriptor.ChanDescriptor
 import com.github.k1rakishou.model.data.descriptor.PostDescriptor
-import com.github.k1rakishou.model.data.descriptor.SiteDescriptor
 import com.github.k1rakishou.model.data.post.ChanPost
 import com.github.k1rakishou.persist_state.ReplyMode
+import com.github.k1rakishou.prefs.BooleanSetting
 import com.github.k1rakishou.prefs.OptionsSetting
 import dagger.Lazy
 import kotlinx.coroutines.CoroutineName
@@ -296,6 +293,8 @@ class ReplyPresenter @Inject constructor(
       return
     }
 
+    processTextFormattingButtons()
+
     callback.focusComment()
 
     postingCheckLastErrorJob?.cancel()
@@ -311,6 +310,40 @@ class ReplyPresenter @Inject constructor(
       }
 
       onPostCompleteUnsuccessful(lastUnsuccessfulReplyResponse)
+    }
+  }
+
+  private fun processTextFormattingButtons() {
+    callback.openCommentQuoteButton(true)
+
+    val chanBoard = getBoardByCurrentDescriptorOrNull()
+      ?: return
+
+    val is4chan = chanBoard.boardDescriptor.siteDescriptor.is4chan()
+    val isDvach = chanBoard.boardDescriptor.siteDescriptor.isDvach()
+
+    if (isDvach || chanBoard.spoilers) {
+      callback.openCommentSpoilerButton(true)
+    }
+
+    if (is4chan && chanBoard.boardCode() == "g") {
+      callback.openCommentCodeButton(true)
+    }
+
+    if (is4chan && chanBoard.boardCode() == "sci") {
+      callback.openCommentEqnButton(true)
+      callback.openCommentMathButton(true)
+    }
+
+    if (is4chan && (chanBoard.boardCode() == "jp" || chanBoard.boardCode() == "vip")) {
+      callback.openCommentSJISButton(true)
+    }
+
+    if (isDvach) {
+      callback.openCommentBoldButton(true)
+      callback.openCommentItalicButton(true)
+      callback.openCommentUnderlineButton(true)
+      callback.openCommentStrikeThroughButton(true)
     }
   }
 
@@ -343,31 +376,9 @@ class ReplyPresenter @Inject constructor(
     }
 
     getBoardByCurrentDescriptorOrNull()?.let { chanBoard ->
-      val is4chan = chanBoard.boardDescriptor.siteDescriptor.is4chan()
-
-      callback.openCommentQuoteButton(isExpanded)
-
-      if (chanBoard.spoilers) {
-        callback.openCommentSpoilerButton(isExpanded)
-      }
-
-      if (is4chan && chanBoard.boardCode() == "g") {
-        callback.openCommentCodeButton(isExpanded)
-      }
-
-      if (is4chan && chanBoard.boardCode() == "sci") {
-        callback.openCommentEqnButton(isExpanded)
-        callback.openCommentMathButton(isExpanded)
-      }
-
-      if (is4chan && (chanBoard.boardCode() == "jp" || chanBoard.boardCode() == "vip")) {
-        callback.openCommentSJISButton(isExpanded)
-      }
-
       if (isExpanded && chanBoard.countryFlags) {
-        val lastUsedFlagKey = boardFlagInfoRepository.getLastUsedFlagKey(chanBoard.boardDescriptor)
-          ?: return
-        callback.openFlag(lastUsedFlagKey)
+        boardFlagInfoRepository.getLastUsedFlagKey(chanBoard.boardDescriptor)
+          ?.let { lastUsedFlagKey -> callback.openFlag(lastUsedFlagKey) }
       } else {
         callback.hideFlag()
       }
@@ -427,58 +438,6 @@ class ReplyPresenter @Inject constructor(
             onFinished?.invoke(true)
           }
         }
-        is CaptchaContainerController.AuthenticationResult.SiteRequiresAdditionalAuth -> {
-          launch {
-            var cookieResult: CookieResult = CookieResult.Canceled
-
-            val firewallType = authenticationResult.firewallType
-            val siteDescriptor = authenticationResult.siteDescriptor
-
-            when (firewallType) {
-              FirewallType.Cloudflare -> {
-                cookieResult = callback.showFireWallBypassController(firewallType, siteDescriptor)
-                when (cookieResult) {
-                  CookieResult.Canceled -> {
-                    showToast(context, getString(R.string.firewall_check_canceled, firewallType))
-                  }
-                  CookieResult.NotSupported -> {
-                    showToast(context, getString(R.string.firewall_check_not_supported, firewallType, siteDescriptor.siteName))
-                  }
-                  is CookieResult.Error -> {
-                    val errorMsg = cookieResult.exception.errorMessageOrClassName()
-                    showToast(context, getString(R.string.firewall_check_failure, firewallType, errorMsg))
-                  }
-                  is CookieResult.CookieValue -> {
-                    showToast(context, getString(R.string.firewall_check_success, firewallType))
-                  }
-                }
-              }
-              FirewallType.DvachAntiSpam -> {
-                cookieResult = callback.showFireWallBypassController(firewallType, siteDescriptor)
-                when (cookieResult) {
-                  CookieResult.Canceled -> {
-                    showToast(context, R.string.dvach_antispam_result_canceled)
-                  }
-                  CookieResult.NotSupported -> {
-                    showToast(context, getString(R.string.firewall_check_not_supported, firewallType, siteDescriptor.siteName))
-                  }
-                  is CookieResult.Error -> {
-                    val errorMsg = cookieResult.exception.errorMessageOrClassName()
-                    showToast(context, getString(R.string.dvach_antispam_result_error, errorMsg))
-                  }
-                  is CookieResult.CookieValue -> {
-                    showToast(context, getString(R.string.dvach_antispam_result_success))
-                  }
-                }
-              }
-            }
-
-            if (!autoReply) {
-              val success = cookieResult is CookieResult.CookieValue
-              onFinished?.invoke(success)
-            }
-          }
-        }
       }
     }
 
@@ -522,13 +481,66 @@ class ReplyPresenter @Inject constructor(
   }
 
   private fun showReplyOptions(chanDescriptor: ChanDescriptor, prevReplyMode: ReplyMode) {
+    val menuItems = mutableListOf<FloatingListMenuItem>()
+    val availableReplyModes = buildReplyModeOptions(chanDescriptor, prevReplyMode)
+
+    val ignoreReplyCooldowns = siteManager.bySiteDescriptor(chanDescriptor.siteDescriptor())
+      ?.requireSettingBySettingId<BooleanSetting>(SiteSetting.SiteSettingId.IgnoreReplyCooldowns)
+    val lastUsedReplyMode = siteManager.bySiteDescriptor(chanDescriptor.siteDescriptor())
+      ?.requireSettingBySettingId<OptionsSetting<ReplyMode>>(SiteSetting.SiteSettingId.LastUsedReplyMode)
+
+    menuItems += FloatingListMenuItem(
+      key = ACTION_REPLY_MODES,
+      name = "Reply modes",
+      more = availableReplyModes
+    )
+    menuItems += CheckableFloatingListMenuItem(
+      key = ACTION_IGNORE_REPLY_COOLDOWNS,
+      name = "Ignore reply cooldowns",
+      isCurrentlySelected = ignoreReplyCooldowns?.get() == true
+    )
+
+    val floatingListMenuController = FloatingListMenuController(
+      context = context,
+      constraintLayoutBias = globalWindowInsetsManager.lastTouchCoordinatesAsConstraintLayoutBias(),
+      items = menuItems,
+      itemClickListener = { clickedItem ->
+        if (clickedItem.key is Int) {
+          when (clickedItem.key) {
+            ACTION_REPLY_MODES -> {
+              // ???
+            }
+            ACTION_IGNORE_REPLY_COOLDOWNS -> {
+              ignoreReplyCooldowns?.toggle()
+            }
+          }
+        } else if (clickedItem.key is ReplyMode) {
+          val replyMode = clickedItem.key as? ReplyMode
+            ?: return@FloatingListMenuController
+
+          lastUsedReplyMode?.set(replyMode)
+
+          callback.updateCaptchaContainerVisibility()
+        }
+      }
+    )
+
+    callback.presentController(floatingListMenuController)
+  }
+
+  private fun buildReplyModeOptions(
+    chanDescriptor: ChanDescriptor,
+    prevReplyMode: ReplyMode
+  ): MutableList<FloatingListMenuItem> {
     val availableReplyModes = mutableListOf<FloatingListMenuItem>()
     val site = siteManager.bySiteDescriptor(chanDescriptor.siteDescriptor())
+    val groupId = "reply_mode"
 
     if (site?.actions()?.postAuthenticate()?.type != SiteAuthentication.Type.NONE) {
       availableReplyModes += CheckableFloatingListMenuItem(
         key = ReplyMode.ReplyModeSolveCaptchaManually,
         name = getString(R.string.reply_mode_solve_captcha_and_post),
+        groupId = groupId,
         isCurrentlySelected = prevReplyMode == ReplyMode.ReplyModeSolveCaptchaManually
       )
     }
@@ -536,6 +548,7 @@ class ReplyPresenter @Inject constructor(
     availableReplyModes += CheckableFloatingListMenuItem(
       key = ReplyMode.ReplyModeSendWithoutCaptcha,
       name = getString(R.string.reply_mode_attempt_post_without_captcha),
+      groupId = groupId,
       isCurrentlySelected = prevReplyMode == ReplyMode.ReplyModeSendWithoutCaptcha
     )
 
@@ -545,6 +558,7 @@ class ReplyPresenter @Inject constructor(
       availableReplyModes += CheckableFloatingListMenuItem(
         key = ReplyMode.ReplyModeSolveCaptchaAuto,
         name = getString(R.string.reply_mode_post_with_captcha_solver),
+        groupId = groupId,
         isCurrentlySelected = prevReplyMode == ReplyMode.ReplyModeSolveCaptchaAuto
       )
     }
@@ -553,27 +567,12 @@ class ReplyPresenter @Inject constructor(
       availableReplyModes += CheckableFloatingListMenuItem(
         key = ReplyMode.ReplyModeUsePasscode,
         name = getString(R.string.reply_mode_post_with_passcode),
+        groupId = groupId,
         isCurrentlySelected = prevReplyMode == ReplyMode.ReplyModeUsePasscode
       )
     }
 
-    val floatingListMenuController = FloatingListMenuController(
-      context = context,
-      constraintLayoutBias = globalWindowInsetsManager.lastTouchCoordinatesAsConstraintLayoutBias(),
-      items = availableReplyModes,
-      itemClickListener = { clickedItem ->
-        val replyMode = clickedItem.key as? ReplyMode
-          ?: return@FloatingListMenuController
-
-        siteManager.bySiteDescriptor(chanDescriptor.siteDescriptor())
-          ?.requireSettingBySettingId<OptionsSetting<ReplyMode>>(SiteSetting.SiteSettingId.LastUsedReplyMode)
-          ?.set(replyMode)
-
-        callback.updateCaptchaContainerVisibility()
-      }
-    )
-
-    callback.presentController(floatingListMenuController)
+    return availableReplyModes
   }
 
   private fun submitOrAuthenticate(chanDescriptor: ChanDescriptor, replyMode: ReplyMode) {
@@ -715,12 +714,6 @@ class ReplyPresenter @Inject constructor(
     callback.setExpanded(expanded = false, isCleaningUp = true)
     callback.openSubject(false)
     callback.hideFlag()
-    callback.openCommentQuoteButton(false)
-    callback.openCommentSpoilerButton(false)
-    callback.openCommentCodeButton(false)
-    callback.openCommentEqnButton(false)
-    callback.openCommentMathButton(false)
-    callback.openCommentSJISButton(false)
     callback.openNameOptions(false)
     callback.updateRevertChangeButtonVisibility(isBufferEmpty = true)
     removeFloatingReplyMessageClickAction()
@@ -782,49 +775,11 @@ class ReplyPresenter @Inject constructor(
         }
 
         when (replyResponse.additionalResponseData) {
-          ReplyResponse.AdditionalResponseData.DvachAntiSpamCheckDetected -> {
-            handleDvachAntiSpam(replyResponse, chanDescriptor, replyMode)
-          }
-          null -> {
+          ReplyResponse.AdditionalResponseData.NoOp -> {
             onPostCompleteUnsuccessful(replyResponse, additionalErrorMessage = null)
           }
         }
       }
-    }
-  }
-
-  private suspend fun handleDvachAntiSpam(
-    replyResponse: ReplyResponse,
-    chanDescriptor: ChanDescriptor,
-    replyMode: ReplyMode
-  ) {
-    val firewallType = FirewallType.DvachAntiSpam
-    val siteDescriptor = chanDescriptor.siteDescriptor()
-
-    val cookieResult = callback.showFireWallBypassController(firewallType, siteDescriptor)
-    if (cookieResult is CookieResult.CookieValue) {
-      // We managed to solve the anti spam check, try posting again
-      makeSubmitCall(chanDescriptor = chanDescriptor, replyMode = replyMode, retrying = true)
-    } else {
-      val reason = when (cookieResult) {
-        CookieResult.Canceled -> {
-          getString(R.string.dvach_antispam_result_canceled)
-        }
-        CookieResult.NotSupported -> {
-          getString(R.string.firewall_check_not_supported, firewallType, siteDescriptor.siteName)
-        }
-        is CookieResult.Error -> {
-          val errorMsg = cookieResult.exception.errorMessageOrClassName()
-          getString(R.string.dvach_antispam_result_error, errorMsg)
-        }
-        is CookieResult.CookieValue -> getString(R.string.dvach_antispam_result_success)
-      }
-
-      // We failed to solve the anti spam check, show the error
-      onPostCompleteUnsuccessful(
-        replyResponse = replyResponse,
-        additionalErrorMessage = getString(R.string.reply_error_failed_to_process_dvach_anti_spam_locally, reason)
-      )
     }
   }
 
@@ -999,6 +954,10 @@ class ReplyPresenter @Inject constructor(
     fun openCommentQuoteButton(open: Boolean)
     fun openCommentSpoilerButton(open: Boolean)
     fun openCommentCodeButton(open: Boolean)
+    fun openCommentBoldButton(open: Boolean)
+    fun openCommentItalicButton(open: Boolean)
+    fun openCommentUnderlineButton(open: Boolean)
+    fun openCommentStrikeThroughButton(open: Boolean)
     fun openCommentEqnButton(open: Boolean)
     fun openCommentMathButton(open: Boolean)
     fun openCommentSJISButton(open: Boolean)
@@ -1011,7 +970,6 @@ class ReplyPresenter @Inject constructor(
     fun restoreComment(prevCommentInputState: CommentEditingHistory.CommentInputState)
     suspend fun bindReplyImages(chanDescriptor: ChanDescriptor)
     fun unbindReplyImages(chanDescriptor: ChanDescriptor)
-    suspend fun showFireWallBypassController(firewallType: FirewallType, siteDescriptor: SiteDescriptor): CookieResult
     fun presentController(controller: Controller)
     fun hideKeyboard()
     fun updateCaptchaContainerVisibility()
@@ -1022,6 +980,9 @@ class ReplyPresenter @Inject constructor(
     // matches for >>123, >>123 (text), >>>/fit/123
     private val QUOTE_PATTERN = Pattern.compile(">>\\d+")
     private val UTF_8 = StandardCharsets.UTF_8
+
+    private const val ACTION_REPLY_MODES = 0
+    private const val ACTION_IGNORE_REPLY_COOLDOWNS = 1
   }
 
 }

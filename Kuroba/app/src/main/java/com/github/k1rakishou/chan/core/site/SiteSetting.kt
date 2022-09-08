@@ -16,6 +16,7 @@
  */
 package com.github.k1rakishou.chan.core.site
 
+import com.github.k1rakishou.prefs.BooleanSetting
 import com.github.k1rakishou.prefs.OptionsSetting
 import com.github.k1rakishou.prefs.StringSetting
 
@@ -27,6 +28,7 @@ sealed class SiteSetting(
   class SiteOptionsSetting(
     settingName: String,
     settingDescription: String?,
+    val groupId: String? = null,
     val options: OptionsSetting<*>,
     val optionNames: List<String>
   ) : SiteSetting(settingName, settingDescription)
@@ -37,6 +39,12 @@ sealed class SiteSetting(
     val setting: StringSetting
   ) : SiteSetting(settingName, settingDescription)
 
+  class SiteBooleanSetting(
+    settingName: String,
+    settingDescription: String?,
+    val setting: BooleanSetting
+  ) : SiteSetting(settingName, settingDescription)
+
   enum class SiteSettingId {
     CloudFlareClearanceCookie,
     LastUsedCountryFlagPerBoard,
@@ -44,6 +52,7 @@ sealed class SiteSetting(
     DvachAntiSpamCookie,
     LastUsedReplyMode,
     Chan4CaptchaSettings,
+    IgnoreReplyCooldowns
   }
 
 }

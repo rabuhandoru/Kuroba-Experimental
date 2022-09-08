@@ -16,9 +16,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -34,7 +34,6 @@ import com.github.k1rakishou.chan.core.compose.AsyncData
 import com.github.k1rakishou.chan.core.image.ImageLoaderV2
 import com.github.k1rakishou.chan.core.manager.SiteManager
 import com.github.k1rakishou.chan.core.site.SiteAuthentication
-import com.github.k1rakishou.chan.features.bypass.FirewallType
 import com.github.k1rakishou.chan.ui.captcha.AuthenticationLayoutCallback
 import com.github.k1rakishou.chan.ui.captcha.AuthenticationLayoutInterface
 import com.github.k1rakishou.chan.ui.captcha.CaptchaHolder
@@ -51,10 +50,8 @@ import com.github.k1rakishou.chan.ui.compose.ProvideChanTheme
 import com.github.k1rakishou.chan.ui.theme.widget.TouchBlockingFrameLayout
 import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils
 import com.github.k1rakishou.chan.utils.viewModelByKey
-import com.github.k1rakishou.common.BadStatusResponseException
 import com.github.k1rakishou.common.isNotNullNorEmpty
 import com.github.k1rakishou.model.data.descriptor.SiteDescriptor
-import kotlinx.coroutines.flow.collectLatest
 import javax.inject.Inject
 
 class DvachCaptchaLayout(context: Context) : TouchBlockingFrameLayout(context),
@@ -92,15 +89,6 @@ class DvachCaptchaLayout(context: Context) : TouchBlockingFrameLayout(context),
       setContent {
         ProvideChanTheme(themeEngine) {
           val chanTheme = LocalChanTheme.current
-
-          LaunchedEffect(
-            key1 = Unit,
-            block = {
-              viewModel.cloudFlareDetectedFlow.collectLatest {
-                callback.onSiteRequiresAdditionalAuth(FirewallType.Cloudflare, siteDescriptor)
-              }
-            }
-          )
 
           Box(
             modifier = Modifier
@@ -144,11 +132,6 @@ class DvachCaptchaLayout(context: Context) : TouchBlockingFrameLayout(context),
   @Composable
   private fun BuildContent() {
     BuildCaptchaInput(
-      onAuthClick = {
-        if (siteDescriptor != null) {
-          callback?.onSiteRequiresAdditionalAuth(FirewallType.DvachAntiSpam, siteDescriptor!!)
-        }
-      },
       onReloadClick = { hardReset() },
       onVerifyClick = { captchaId, token ->
         val solution = CaptchaSolution.ChallengeWithSolution(
@@ -164,7 +147,6 @@ class DvachCaptchaLayout(context: Context) : TouchBlockingFrameLayout(context),
 
   @Composable
   private fun BuildCaptchaInput(
-    onAuthClick: () -> Unit,
     onReloadClick: () -> Unit,
     onVerifyClick: (String, String) -> Unit
   ) {
@@ -179,6 +161,8 @@ class DvachCaptchaLayout(context: Context) : TouchBlockingFrameLayout(context),
       var currentInputValue by viewModel.currentInputValue
       val captchaInfoAsync by viewModel.captchaInfoToShow
       val captchaInfo = (captchaInfoAsync as? AsyncData.Data)?.data
+
+      val captchaId = captchaInfo?.id
 
       if (captchaInfo != null) {
         val input = captchaInfo.input
@@ -195,7 +179,15 @@ class DvachCaptchaLayout(context: Context) : TouchBlockingFrameLayout(context),
           value = currentInputValue,
           onValueChange = { newValue -> currentInputValue = newValue },
           maxLines = 1,
+          singleLine = true,
           keyboardOptions = keyboardOptions,
+          keyboardActions = KeyboardActions(
+            onDone = {
+              if (captchaId.isNotNullNorEmpty()) {
+                onVerifyClick(captchaId, viewModel.currentInputValue.value)
+              }
+            }
+          ),
           modifier = Modifier
             .fillMaxWidth()
             .wrapContentHeight()
@@ -214,20 +206,12 @@ class DvachCaptchaLayout(context: Context) : TouchBlockingFrameLayout(context),
           .wrapContentHeight()
       ) {
         KurobaComposeTextBarButton(
-          onClick = onAuthClick,
-          text = stringResource(id = R.string.captcha_layout_dvach_auth)
-        )
-
-        Spacer(modifier = Modifier.width(8.dp))
-
-        KurobaComposeTextBarButton(
           onClick = onReloadClick,
           text = stringResource(id = R.string.captcha_layout_reload)
         )
 
         Spacer(modifier = Modifier.width(8.dp))
 
-        val captchaId = captchaInfo?.id
         val buttonEnabled = captchaId.isNotNullNorEmpty() && currentInputValue.isNotEmpty()
 
         KurobaComposeTextBarButton(
@@ -263,17 +247,10 @@ class DvachCaptchaLayout(context: Context) : TouchBlockingFrameLayout(context),
         }
         is AsyncData.Error -> {
           val error = (captchaInfoAsync as AsyncData.Error).throwable
-          if (error is BadStatusResponseException && error.status == 401) {
-            KurobaComposeErrorMessage(
-              errorMessage = stringResource(id = R.string.captcha_layout_dvach_auth_required),
-              modifier = Modifier.fillMaxSize()
-            )
-          } else {
-            KurobaComposeErrorMessage(
-              error = error,
-              modifier = Modifier.fillMaxSize()
-            )
-          }
+          KurobaComposeErrorMessage(
+            error = error,
+            modifier = Modifier.fillMaxSize()
+          )
         }
         is AsyncData.Data -> {
           val requestFullUrl = remember {

@@ -9,7 +9,10 @@ import com.github.k1rakishou.chan.core.helper.ChanLoadProgressNotifier
 import com.github.k1rakishou.chan.core.image.ImageLoaderV2
 import com.github.k1rakishou.chan.core.manager.BoardManager
 import com.github.k1rakishou.chan.core.manager.ChanThreadManager
+import com.github.k1rakishou.chan.core.manager.CurrentOpenedDescriptorStateManager
+import com.github.k1rakishou.chan.core.manager.PostingLimitationsInfoManager
 import com.github.k1rakishou.chan.core.manager.ReplyManager
+import com.github.k1rakishou.chan.core.manager.SiteManager
 import com.github.k1rakishou.chan.core.manager.ThreadDownloadManager
 import com.github.k1rakishou.chan.core.site.SiteResolver
 import com.github.k1rakishou.chan.core.site.loader.ChanThreadLoaderCoordinator
@@ -21,6 +24,7 @@ import com.github.k1rakishou.chan.features.media_viewer.helper.MediaViewerOpenAl
 import com.github.k1rakishou.chan.features.media_viewer.helper.MediaViewerOpenThreadHelper
 import com.github.k1rakishou.chan.features.media_viewer.helper.MediaViewerScrollerHelper
 import com.github.k1rakishou.chan.features.thread_downloading.ThreadDownloadProgressNotifier
+import com.github.k1rakishou.chan.ui.captcha.chan4.Chan4CaptchaSolverHelper
 import com.github.k1rakishou.chan.ui.helper.AppSettingsUpdateAppRefreshHelper
 import com.github.k1rakishou.chan.ui.helper.picker.ImagePickHelper
 import com.github.k1rakishou.chan.ui.helper.picker.LocalFilePicker
@@ -33,6 +37,7 @@ import com.github.k1rakishou.model.repository.ChanCatalogSnapshotRepository
 import com.github.k1rakishou.model.repository.ChanPostRepository
 import com.github.k1rakishou.model.source.cache.ChanCatalogSnapshotCache
 import com.github.k1rakishou.model.source.cache.thread.ChanThreadsCache
+import com.squareup.moshi.Moshi
 import dagger.Lazy
 import dagger.Module
 import dagger.Provides
@@ -133,19 +138,26 @@ class HelperModule {
   fun provideImagePickHelper(
     appContext: Context,
     replyManager: Lazy<ReplyManager>,
+    siteManager: Lazy<SiteManager>,
     imageLoaderV2: Lazy<ImageLoaderV2>,
     shareFilePicker: Lazy<ShareFilePicker>,
     localFilePicker: Lazy<LocalFilePicker>,
     remoteFilePicker: Lazy<RemoteFilePicker>,
+    postingLimitationsInfoManager: Lazy<PostingLimitationsInfoManager>,
+    currentOpenedDescriptorStateManager: Lazy<CurrentOpenedDescriptorStateManager>,
   ): ImagePickHelper {
     Logger.deps("ImagePickHelper");
+
     return ImagePickHelper(
       appContext,
+      siteManager,
       replyManager,
       imageLoaderV2,
       shareFilePicker,
       localFilePicker,
-      remoteFilePicker
+      remoteFilePicker,
+      postingLimitationsInfoManager,
+      currentOpenedDescriptorStateManager
     )
   }
 
@@ -217,6 +229,13 @@ class HelperModule {
   fun provideAppRestarter(): AppRestarter {
     Logger.deps("AppRestarter");
     return AppRestarter()
+  }
+
+  @Provides
+  @Singleton
+  fun provideChan4CaptchaSolverHelper(moshi: Lazy<Moshi>): Chan4CaptchaSolverHelper {
+    Logger.deps("Chan4CaptchaSolverHelper");
+    return Chan4CaptchaSolverHelper(moshi)
   }
 
 }

@@ -154,18 +154,6 @@ internal class SearchResultsPresenter(
 
       val searchResult = executeRequest()
       if (searchResult is SearchResult.Failure) {
-        if (searchResult.searchError is SearchError.FirewallDetectedError) {
-          val firewallDetectedError = searchResult.searchError as SearchError.FirewallDetectedError
-
-          withView {
-            onFirewallDetected(
-              firewallType = firewallDetectedError.firewallType,
-              siteDescriptor = siteDescriptor,
-              requestUrl = searchResult.searchError.requestUrl
-            )
-          }
-        }
-
         logSearchError(searchResult)
 
         if (prevStateData == null) {
@@ -203,9 +191,7 @@ internal class SearchResultsPresenter(
       is SearchError.ParsingError -> Logger.e(TAG, "$searchError")
       is SearchError.UnknownError -> Logger.e(TAG, "Unknown error", searchError.error)
       is SearchError.FailedToSearchError -> Logger.e(TAG, "FailedToSearchError, message: ${searchError.message}")
-      is SearchError.FirewallDetectedError -> {
-        Logger.e(TAG, "Firewall (${searchError.firewallType}) detected error, requestUrl=${searchError.requestUrl}")
-      }
+      is SearchError.SiteSpecificError -> Logger.e(TAG, "SiteSpecificError, message: ${searchError.message}")
     }
   }
 
@@ -399,10 +385,10 @@ internal class SearchResultsPresenter(
         "Unknown error: ${searchError.error.errorMessageOrClassName()}"
       }
       is SearchError.ParsingError -> {
-        "Html parsing error: ${searchError.message}"
+        "Parsing error: ${searchError.message}"
       }
-      is SearchError.FirewallDetectedError -> {
-        "${searchError.firewallType} detected! You need to pass ${searchError.firewallType} checks to continue"
+      is SearchError.SiteSpecificError -> {
+        "Site returned error: ${searchError.message}"
       }
       is SearchError.FailedToSearchError -> searchError.message
     }

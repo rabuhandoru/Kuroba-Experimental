@@ -34,9 +34,6 @@ import com.github.k1rakishou.chan.core.site.http.login.Chan4LoginRequest
 import com.github.k1rakishou.chan.core.site.http.login.DvachLoginRequest
 import com.github.k1rakishou.chan.core.site.sites.chan4.Chan4
 import com.github.k1rakishou.chan.core.site.sites.dvach.Dvach
-import com.github.k1rakishou.chan.features.bypass.CookieResult
-import com.github.k1rakishou.chan.features.bypass.FirewallType
-import com.github.k1rakishou.chan.features.bypass.SiteFirewallBypassController
 import com.github.k1rakishou.chan.ui.theme.widget.ColorizableButton
 import com.github.k1rakishou.chan.ui.theme.widget.ColorizableEditText
 import com.github.k1rakishou.chan.ui.view.CrossfadeView
@@ -67,7 +64,7 @@ class LoginController(
   private lateinit var bottomDescription: TextView
 
   private lateinit var button: ColorizableButton
-  private lateinit var refreshPostingLimitsInfoButton: ColorizableButton
+  private lateinit var updatePasscodeInfo: ColorizableButton
   private lateinit var inputToken: ColorizableEditText
   private lateinit var inputPin: ColorizableEditText
 
@@ -86,7 +83,7 @@ class LoginController(
       crossfadeView = view.findViewById(R.id.crossfade)
       errors = view.findViewById(R.id.errors)
       button = view.findViewById(R.id.retry_button)
-      refreshPostingLimitsInfoButton = view.findViewById(R.id.refresh_posting_limits_info)
+      updatePasscodeInfo = view.findViewById(R.id.update_passcode_info)
       inputToken = view.findViewById(R.id.input_token)
       inputPin = view.findViewById(R.id.input_pin)
       authenticated = view.findViewById(R.id.authenticated)
@@ -141,7 +138,6 @@ class LoginController(
 
   override fun onRefreshPostingLimitsInfoError(error: Throwable) {
     showToast(error.errorMessageOrClassName())
-
     enableDisableControls(enable = true)
   }
 
@@ -178,22 +174,22 @@ class LoginController(
     }
 
     if (loginDetails.loginOverridesPostLimitations) {
-      refreshPostingLimitsInfoButton.visibility = View.VISIBLE
-      refreshPostingLimitsInfoButton.setOnClickListener {
+      updatePasscodeInfo.visibility = View.VISIBLE
+      updatePasscodeInfo.setOnClickListener {
         if (!loggedIn()) {
           showToast(context.getString(R.string.must_be_logged_in))
           return@setOnClickListener
         }
 
         enableDisableControls(enable = false)
-        loginPresenter.refreshPostingLimitsInfo(site.siteDescriptor())
+        loginPresenter.updatePasscodeInfo(site.siteDescriptor())
       }
     }
   }
 
   private fun enableDisableControls(enable: Boolean) {
     button.isEnabled = enable
-    refreshPostingLimitsInfoButton.isEnabled = enable
+    updatePasscodeInfo.isEnabled = enable
     inputToken.isEnabled = enable
     inputPin.isEnabled = enable
   }
@@ -202,9 +198,6 @@ class LoginController(
     if (site is Chan4) {
       bottomDescription.text = getString(R.string.setting_pass_bottom_description_chan4).parseAsHtml()
       bottomDescription.movementMethod = LinkMovementMethod.getInstance()
-      return
-    } else if (site is Dvach) {
-      bottomDescription.text = getString(R.string.setting_pass_bottom_description_dvach)
       return
     }
 
@@ -241,57 +234,7 @@ class LoginController(
       is SiteActions.LoginResult.LoginError -> {
         onLoginError(loginResult.errorMessage)
       }
-      SiteActions.LoginResult.CloudflareDetected,
-      SiteActions.LoginResult.AntiSpamDetected -> {
-        if (retrying) {
-          onLoginError("Firewall passed, now try logging in again")
-          return
-        }
-
-        val firewallType = if (loginResult is SiteActions.LoginResult.CloudflareDetected) {
-          FirewallType.Cloudflare
-        } else {
-          FirewallType.DvachAntiSpam
-        }
-
-        handleAntiSpam(firewallType)
-      }
     }
-  }
-
-  private fun handleAntiSpam(firewallType: FirewallType) {
-    val siteDescriptor = site.siteDescriptor()
-
-    if (siteDescriptor.isDvach()) {
-      val urlToOpen = siteManager.bySiteDescriptor(siteDescriptor)?.firewallChallengeEndpoint()
-        ?: return
-
-      val controller = SiteFirewallBypassController(
-        context = context,
-        firewallType = firewallType,
-        urlToOpen = urlToOpen,
-        onResult = { cookieResult ->
-          if (cookieResult is CookieResult.CookieValue) {
-            mainScope.launch { auth(retrying = true) }
-            return@SiteFirewallBypassController
-          }
-
-          val error = when (cookieResult) {
-            is CookieResult.CookieValue -> throw IllegalStateException("Must not be used here")
-            CookieResult.Canceled -> getString(R.string.canceled)
-            CookieResult.NotSupported -> "Not supported"
-            is CookieResult.Error -> cookieResult.exception.errorMessageOrClassName()
-          }
-
-          onLoginError("Failed to pass anti-spam check, error=$error")
-        }
-      )
-
-      presentController(controller)
-      return
-    }
-
-    onLoginError("Unsupported anti-spam system detected!")
   }
 
   private fun createLoginRequest(): AbstractLoginRequest {

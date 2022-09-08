@@ -189,7 +189,7 @@ Re-enable this permission in the app settings if you permanently disabled it."</
     <string name="action_reset_dark_theme">Reset Dark theme</string>
     <string name="action_ignore_dark_night_mode">Ignore system Day/Night mode</string>
 
-    <string name="action_mark_replies_your_posts_on_scrollbar">Highlight my posts</string>
+    <string name="action_mark_your_posts_on_scrollbar">Highlight my posts</string>
     <string name="action_mark_replies_to_your_posts_on_scrollbar">Highlight (You)s</string>
     <string name="action_mark_cross_thread_quotes_on_scrollbar">Highlight cross-thread replies</string>
     <string name="action_mark_deleted_posts_on_scrollbar">Highlight deleted posts</string>
@@ -197,6 +197,7 @@ Re-enable this permission in the app settings if you permanently disabled it."</
     <string name="action_catalog_thread_nsfw_mode">NSFW mode</string>
     <string name="action_third_eye_settings">Third eye settings</string>
     <string name="action_use_scrolling_text_for_thread_title">Use scrolling text for thread title</string>
+    <string name="action_thread_highlight_options">Thread scrollbar post highlight options</string>
 
     <string name="action_scroll_to_top">Top</string>
     <string name="action_scroll_to_bottom">Bottom</string>
@@ -247,7 +248,7 @@ Re-enable this permission in the app settings if you permanently disabled it."</
     <string name="open_link_failed_url_additional_info">No applications were found to open link \"%1$s\" (%2$s)</string>
     <string name="image_pick_delegate_select_file_picker">Select a file picker to open a file…</string>
 
-    <string name="thumbnail_load_failed_network">Reload</string>
+    <string name="thumbnail_load_failed_network">Error</string>
     <string name="thumbnail_load_failed_404">Not found</string>
     <string name="thumbnail_omitted_files_indicator_text">+%1$d</string>
     <string name="image_image_download_failed">Failed to download image (reason: %1$s)</string>
@@ -509,11 +510,16 @@ Usually that means that you forgot to remove a space from the beginning or the e
     <string name="reply_comment_button_eqn">Eqn</string>
     <string name="reply_comment_button_math">Math</string>
     <string name="reply_comment_button_sjis">SJIS</string>
-    <string name="reply_comment_button_spoiler_tag">[s]</string>
+    <string name="reply_comment_button_spoiler_tag">[sp]</string>
     <string name="reply_comment_button_code_tag">[c]</string>
     <string name="reply_comment_button_eqn_tag">[eqn]</string>
     <string name="reply_comment_button_math_tag">[math]</string>
     <string name="reply_comment_button_sjis_tag">[sjis]</string>
+    <string name="reply_comment_button_bold_tag">[b]</string>
+    <string name="reply_comment_button_italic_tag">[i]</string>
+    <string name="reply_comment_button_underline_tag">[u]</string>
+    <string name="reply_comment_button_overline_tag">[o]</string>
+    <string name="reply_comment_button_strikethrough_tag">[st]</string>
     <string name="reply_proxy_list_is_dirty_message">You recently changed your proxy list and didn\'t restart the app. There is a possibility that the next post you make will use a wrong proxy or no proxy at all (that depends on what you\'ve changed). Restart the app to make sure everything works as expected.</string>
     <string name="reply_flag_format">Flag: %1$s</string>
     <string name="reply_captcha_failure">Captcha failure</string>
@@ -936,8 +942,8 @@ Usually that means that you forgot to remove a space from the beginning or the e
     <string name="setting_pass_logout">Logout</string>
     <string name="setting_pass_error">Connection error</string>
 
-    <string name="setting_posting_limits_info_refresh_success">Posting limits info refreshed</string>
-    <string name="setting_posting_limits_info_refresh_failure">Failed to refresh posting limits info</string>
+    <string name="setting_posting_limits_info_refresh_success">Passcode info updated</string>
+    <string name="setting_posting_limits_info_refresh_failure">Failed to update passcode info</string>
 
     <string name="setting_pass_bottom_description_chan4">"
 <![CDATA[
@@ -956,13 +962,11 @@ Otherwise you will still have to solve captchas.<br>
 If you ever log out or if the passcode expires you will have to change reply mode too.
 ]]>
     "</string>
-    <string name="setting_pass_bottom_description_dvach">You need to pass 2ch anti-spam checks before trying to enter your passcode!</string>
-
     <string name="settings_screen_theme">Themes</string>
     <string name="image_quality">Image quality: %1$d</string>
 
     <string name="theme_gallery_screen_theme_gallery">Theme gallery (%1$s themes)</string>
-    <string name="theme_gallery_screen_loading_themes">Loading themes...</string>
+    <string name="theme_gallery_screen_loading_themes">Loading themes…</string>
     <string name="theme_gallery_screen_loading_themes_failed">Failed to load themes</string>
 
     <string name="site_settings_not_site_found">No site found with siteDescriptor: %1$s</string>
@@ -1049,6 +1053,7 @@ If you ever log out or if the passcode expires you will have to change reply mod
     <string name="controller_proxy_editor_proxy_type_socks">SOCKS</string>
     <string name="controller_proxy_editor_enable_on_sites">Enable on sites</string>
     <string name="controller_proxy_editor_actions">Actions</string>
+    <string name="controller_proxy_editor_proxy_add_error">Failed to add proxy, make sure everything is correct</string>
     <string name="controller_proxy_editor_proxy_added">New proxy added. Restart the app</string>
     <string name="controller_proxy_editor_proxy_updated">Proxy updated. Restart the app</string>
     <string name="controller_proxy_editor_proxy_deleted">Proxy deleted. Restart the app</string>
@@ -1115,19 +1120,24 @@ If you ever log out or if the passcode expires you will have to change reply mod
     <string name="captcha_layout_v2_verify_button_text">Verify</string>
     <string name="captcha_layout_v2_use_old_captcha">Use old\ncaptcha</string>
 
-    <string name="captcha_layout_dvach_auth">Auth</string>
-    <string name="captcha_layout_dvach_auth_required">Authentication required! Click \'Auth\' button to pass 2ch.hk anti-spam check</string>
     <string name="captcha_layout_reload">Reload</string>
+    <string name="captcha_layout_copy">Copy</string>
+    <string name="captcha_layout_solve">Solve</string>
     <string name="captcha_layout_verify">Verify</string>
+    <string name="captcha_layout_failed_to_find_solution">Failed to find captcha solution</string>
     <string name="captcha_layout_reload_captcha">Reload captcha to apply the setting</string>
     <string name="captcha_layout_contrast_bg_slider_captcha">Use contrast background for slider captcha</string>
     <string name="captcha_layout_remember_captcha_cookies">Remember captcha cookies for easy captcha</string>
-    <string name="captcha_layout_slider_captcha_alternative_ui">Split slider captcha into a grid of images</string>
+    <string name="captcha_layout_use_captcha_solver">Use captcha solver (If installed)</string>
     <string name="captcha_layout_show_captcha_help">Show captcha help</string>
     <string name="captcha_layout_help_title">Captcha help</string>
     <string name="captcha_layout_captcha_already_expired">The captcha has already expired</string>
     <string name="captcha_layout_verification_not_required">Verification is not required! Just click \"Verify\", it\'s free!</string>
     <string name="captcha_layout_help_text" tools:ignore="TypographyDashes">There are three captcha types:\nHard one (with slider), easy one (without slider) and NOOP (the one where you don\'t need to do anything).\n\nTo solve the hard captcha you need to adjust the slider until symbols on the image become readable. Then you need to enter those symbols into the input. You can either drag the slider or drag the image itself (they both do the same action). You can click the image to show/hide the background image. This may or may not help you to try to guess the captcha without using the slider whatsoever. The colored background is drawn to add contrast between two images (Can be disabled in the captcha settings).\n\nIn case of easy captcha you only need to enter the text displayed on the image.\n\nCaptcha detects multiple accesses from the same IP (?) and may rate–limit them for some time (like 15-120+ seconds).\n\nUPD: Captcha has been updated. Now whenever you change the captcha cookie there is a time window (approximately 12-24 hours) when you will only be receiving slider captcha by the 4chan server. I don\'t know why exactly it was changed to be like this but I have a hunch it\'s to make ban-evaders\' life more difficult. After 12-24 hours pass, you should see easy/noop captcha again.\n\nYou can change the cookies manually (for example you may want to import them from the browser) just don\'t forget that 4chan and 4channel have separate cookies. Cookies are stored for 180 days afterwards they are automatically updated the next time you make a post.</string>
+    <string name="captcha_layout_captcha_solver_not_installed_title">Captcha solver not installed</string>
+    <string name="captcha_layout_captcha_solver_not_installed_body">See https://github.com/K1rakishou/4chanCaptchaSolver for more info</string>
+    <string name="captcha_layout_captcha_solver_version_mismatch_title">Captcha solver versions mismatch!</string>
+    <string name="captcha_layout_captcha_solver_version_mismatch_body">Expected \'%1$d\' (currently supported version) version but got \'%2$d\' (installed captcha solver version). You need to either update the captcha solver application or KurobaEx or both. See https://github.com/K1rakishou/4chanCaptchaSolver for more info</string>
 
     <string name="captcha_layout_v2_you_have_to_select_at_least_one_image">You have to select at least one image (if you see a captcha that does not have any matching images, then it is probably a bug; fill an issue and use the old captcha)</string>
     <string name="captcha_layout_v2_verification_already_in_progress">Verification is already in progress</string>
@@ -1140,7 +1150,7 @@ If you ever log out or if the passcode expires you will have to change reply mod
     <string name="link_value_copied_to_clipboard">Link value copied to clipboard</string>
 
     <string name="reply_comment_empty">Reply is empty (no comment body, no files attached).</string>
-    <string name="reply_layout_loading_flags">Loading flags...</string>
+    <string name="reply_layout_loading_flags">Loading flags…</string>
     <string name="reply_failed_to_prepare_reply">Failed to prepare reply.</string>
     <string name="image_reencode_format_error">Something is wrong with this file</string>
 
@@ -1230,7 +1240,7 @@ If you ever log out or if the passcode expires you will have to change reply mod
 
     <string name="layout_reply_files_area_pick_local_file_show_pickers">Pick local file (show all file pickers)</string>
     <string name="layout_reply_files_area_pick_remote_file">Pick remote file (by file url)</string>
-    <string name="layout_reply_files_area_searx_image_search">Use searx image search</string>
+    <string name="layout_reply_files_area_remote_image_search">Remote image search</string>
 
     <string name="reply_notifications_new_replies_total_stats">You have %1$d replies in %2$d thread(s)</string>
     <string name="reply_notifications_new_replies_in_thread">You have %1$d new replies in thread %2$d</string>
@@ -1326,6 +1336,8 @@ If you ever log out or if the passcode expires you will have to change reply mod
     <string name="controller_local_archive_show_downloading_threads">DOWNLOADING</string>
     <string name="controller_local_archive_show_downloaded_threads">DOWNLOADED</string>
     <string name="controller_local_archive_additional_thread_stats">Posts: %1$d, Media: %2$d, Media on disk: %3$s</string>
+    <string name="controller_local_archive_export_threads">Export threads</string>
+    <string name="controller_local_archive_export_thread_media">Export thread media</string>
 
     <string name="controller_saved_posts_delete_many_posts">Delete %1$d saved post(s)?</string>
     <string name="controller_saved_posts_delete_many_posts_description">This action will delete saved posts and unmark replies as yours in threads. Are you sure you want to do that?</string>
@@ -1368,13 +1380,14 @@ If you ever log out or if the passcode expires you will have to change reply mod
     <string name="dvach_antispam_result_error">Dvach anti-spam result: Error %1$s</string>
     <string name="dvach_antispam_result_success">Dvach anti-spam result: Success</string>
 
-    <string name="firewall_check_success">Successfully passed %1$s checks!</string>
+    <string name="firewall_check_success">Successfully passed %1$s checks! You can now retry the last attempt.</string>
     <string name="firewall_check_failure">Failed to pass %1$s checks, reason: %2$s</string>
     <string name="firewall_check_canceled">Failed to pass %1$s checks, reason: Canceled</string>
     <string name="firewall_check_not_supported">Firewall check %1$s for site %2$s is not supported</string>
+    <string name="firewall_check_takes_too_long">If a browser check seem to get stuck then make sure your system\'s \'WebView\' is updated to the LATEST version.</string>
 
-    <string name="searx_image_search_controller_base_url_hint">Searx instance base url, e.g. %1$s</string>
-    <string name="searx_image_search_controller_help_text">Only searx search engines are supported. You can find them all here:\nhttps://searx.space \nNote: Some of them do not support/block the API so they won\'t work.</string>
+    <string name="image_search_controller_title">Remote image search</string>
+    <string name="image_search_controller_current_instance">Current search instance</string>
 
     <string name="catalog_load_page">Loading page %1$d</string>
     <string name="catalog_load_catalog">Loading catalog \'%1$s\'</string>
@@ -1406,7 +1419,7 @@ Actual error: \'%1$s\'</string>
 
     <string name="bookmark_groups_controller_title">Bookmark groups</string>
     <string name="bookmark_groups_controller_no_groups_created">No groups created</string>
-    <string name="bookmark_groups_controller_select_bookmark_group">Select bookmark group to move selected bookmarks into</string>
+    <string name="bookmark_groups_controller_select_bookmark_group">Select existing group</string>
     <string name="bookmark_groups_controller_create_new_group">Create new group</string>
     <string name="bookmark_groups_controller_group_has_no_matcher">Group \'%1$s\' has no matcher</string>
     <string name="bookmark_groups_enter_new_group_name">Enter bookmark group name (must be unique)</string>
@@ -1488,6 +1501,8 @@ Actual error: \'%1$s\'</string>
     <string name="site_captcha_id_cookie_description">Last used captchaId cookie</string>
     <string name="site_block_bypass_cookie_description">Cookie issued by the server after bypassing Lynxchan block</string>
     <string name="site_proof_of_work_cookie_description">Cookie issued by the server after solving Lynxchan Proof-of-work problem</string>
+    <string name="site_ignore_reply_cooldowns">Ignore reply cooldowns</string>
+    <string name="site_ignore_reply_cooldowns_description">When enabled, client-side reply cooldown check will be disabled</string>
 
     <string name="lynxchan_proof_of_work_message">Lynxchan Proof–of–work is required in order to post. This is an additional anti-spam check and is usually required when Tor/VPN/proxy detected. Proof-of-work is not supported by the application because you need to solve a complex problem which requires a lot of computation power and time when solved on PC (~30-40 minutes on Threadripper 2950X with 16 cores). You have to do that on PC and then use the resulting cookies on the phone for posting. To do that, open any thread and try to post. After solving the problem, you will need to copy the following 3 cookies: \'captchaid\', \'bypass\' and \'extraCookie\' into the current site settings.</string>
     <string name="lynxchan_tor_proxy_vpv_detected_message">Tor / VPN / Proxy detected\nYou need a block bypass to post</string>
@@ -1563,7 +1578,7 @@ Actual error: \'%1$s\'</string>
     <string name="decoding_reply_file_preview">Decoding file preview, this may take some time</string>
     <string name="downloading_file">Downloading file, this may take some time</string>
     <string name="enter_image_video_url">Enter image/video url</string>
-    <string name="refresh_posting_limits_info">Refresh posting limits info</string>
+    <string name="update_passcode_info">Update passcode info</string>
     <string name="must_be_logged_in">Must be logged in</string>
     <string name="attached_file_info">Attached file info</string>
     <string name="reply_layout_comment_change_history_cleared">Comment change history cleared</string>

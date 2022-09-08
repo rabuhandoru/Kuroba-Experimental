@@ -135,6 +135,32 @@ class ReplyInputEditText @JvmOverloads constructor(
     listener?.onSelectionChanged()
   }
 
+  override fun onTouchEvent(event: MotionEvent?): Boolean {
+    return try {
+      super.onTouchEvent(event)
+    } catch (error: Throwable) {
+//      java.lang.IndexOutOfBoundsException: setSpan (109 ... 480) ends beyond length 109
+//        at android.text.SpannableStringBuilder.checkRange(SpannableStringBuilder.java:1326)
+//        at android.text.SpannableStringBuilder.setSpan(SpannableStringBuilder.java:685)
+//        at android.text.SpannableStringBuilder.setSpan(SpannableStringBuilder.java:677)
+//        at androidx.emoji2.text.SpannableBuilder.setSpan(SpannableBuilder.java:4)
+//        at android.widget.Editor$SuggestionsPopupWindow.updateSuggestions(Editor.java:4173)
+//        at android.widget.Editor$SuggestionsPopupWindow.show(Editor.java:4039)
+      return false
+    }
+  }
+
+  override fun postDelayed(action: Runnable, delayMillis: Long): Boolean {
+//      java.lang.IndexOutOfBoundsException: setSpan (109 ... 480) ends beyond length 109
+//        at android.text.SpannableStringBuilder.checkRange(SpannableStringBuilder.java:1326)
+//        at android.text.SpannableStringBuilder.setSpan(SpannableStringBuilder.java:685)
+//        at android.text.SpannableStringBuilder.setSpan(SpannableStringBuilder.java:677)
+//        at androidx.emoji2.text.SpannableBuilder.setSpan(SpannableBuilder.java:4)
+//        at android.widget.Editor$SuggestionsPopupWindow.updateSuggestions(Editor.java:4173)
+//        at android.widget.Editor$SuggestionsPopupWindow.show(Editor.java:4039)
+    return super.postDelayed(SafeRunnableWrapper(action), delayMillis)
+  }
+
   override fun onTextContextMenuItem(id: Int): Boolean {
     val currentText = text
       ?: return false
@@ -303,6 +329,18 @@ class ReplyInputEditText @JvmOverloads constructor(
       }
     }
 
+  }
+
+  private class SafeRunnableWrapper(
+    private val runnable: Runnable
+  ) : Runnable {
+    override fun run() {
+      try {
+        runnable.run()
+      } catch (error: Throwable) {
+        Logger.e(TAG, "runnable.run() crashed with error ${error.errorMessageOrClassName()}")
+      }
+    }
   }
 
   interface SelectionChangedListener {

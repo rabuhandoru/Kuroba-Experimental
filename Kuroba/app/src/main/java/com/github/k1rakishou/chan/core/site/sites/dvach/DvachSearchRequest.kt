@@ -10,8 +10,6 @@ import com.github.k1rakishou.chan.core.site.sites.search.SearchEntry
 import com.github.k1rakishou.chan.core.site.sites.search.SearchEntryPost
 import com.github.k1rakishou.chan.core.site.sites.search.SearchError
 import com.github.k1rakishou.chan.core.site.sites.search.SearchResult
-import com.github.k1rakishou.chan.features.bypass.FirewallType
-import com.github.k1rakishou.common.BadStatusResponseException
 import com.github.k1rakishou.common.ModularResult
 import com.github.k1rakishou.common.suspendConvertIntoJsonObjectWithAdapter
 import com.github.k1rakishou.model.data.descriptor.BoardDescriptor
@@ -32,22 +30,15 @@ class DvachSearchRequest(
 ) {
 
   suspend fun execute(): SearchResult {
-    val dvachSearchResult = proxiedOkHttpClient.get().okHttpClient().suspendConvertIntoJsonObjectWithAdapter(
-      request,
-      moshi.get().adapter(DvachSearchResult::class.java)
-    )
+    val dvachSearchResult = proxiedOkHttpClient.get()
+      .okHttpClient()
+      .suspendConvertIntoJsonObjectWithAdapter(
+        request,
+        moshi.get().adapter(DvachSearchResult::class.java)
+      )
 
     val dvachSearch = if (dvachSearchResult is ModularResult.Error) {
       val error = dvachSearchResult.error
-      if (error is BadStatusResponseException && error.status == 401) {
-        val searchError = SearchError.FirewallDetectedError(
-          firewallType = FirewallType.DvachAntiSpam,
-          requestUrl = request.url
-        )
-
-        return SearchResult.Failure(searchError)
-      }
-
       return SearchResult.Failure(SearchError.UnknownError(error))
     } else {
       dvachSearchResult.valueOrNull()!!
@@ -57,7 +48,11 @@ class DvachSearchRequest(
   }
 
   private fun convertToSearchResult(dvachSearchResult: DvachSearchResult): SearchResult {
-    if (dvachSearchResult.posts.isEmpty()) {
+    if (dvachSearchResult.error != null) {
+      return SearchResult.Failure(SearchError.SiteSpecificError(dvachSearchResult.error.message))
+    }
+
+    if (dvachSearchResult.posts.isNullOrEmpty()) {
       return SearchResult.Success(searchParams, emptyList(), PageCursor.End, null)
     }
 
@@ -119,7 +114,14 @@ class DvachSearchRequest(
 
   @JsonClass(generateAdapter = true)
   data class DvachSearchResult(
-    val posts: List<DvachSearchPost>
+    val posts: List<DvachSearchPost>?,
+    val error: DvachError?
+  )
+
+  @JsonClass(generateAdapter = true)
+  data class DvachError(
+    val code: Int,
+    val message: String
   )
 
   @JsonClass(generateAdapter = true)

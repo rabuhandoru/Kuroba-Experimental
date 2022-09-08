@@ -82,12 +82,11 @@ interface SiteActions {
   sealed class LoginResult {
     class LoginComplete(val loginResponse: AbstractLoginResponse) : LoginResult()
     class LoginError(val errorMessage: String) : LoginResult()
-    object CloudflareDetected : LoginResult()
-    object AntiSpamDetected : LoginResult()
   }
 
   sealed class GetPasscodeInfoResult {
     object NotLoggedIn : GetPasscodeInfoResult()
+    object NotAllowedToRefreshFromNetwork : GetPasscodeInfoResult()
     class Success(val postingLimitationsInfo: PasscodePostingLimitationsInfo) : GetPasscodeInfoResult()
     class Failure(val error: Throwable) : GetPasscodeInfoResult()
   }
