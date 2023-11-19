@@ -13,7 +13,6 @@ import com.github.k1rakishou.chan.core.manager.ThreadDownloadManager
 import com.github.k1rakishou.chan.core.site.SiteResolver
 import com.github.k1rakishou.chan.utils.AppModuleAndroidUtils
 import com.github.k1rakishou.chan.utils.BackgroundUtils
-import com.github.k1rakishou.chan.utils.HashingUtil
 import com.github.k1rakishou.common.AppConstants
 import com.github.k1rakishou.common.BadStatusResponseException
 import com.github.k1rakishou.common.EmptyBodyResponseException
@@ -612,7 +611,6 @@ class ImageSaverV2ServiceDelegate(
     return "$fileName.$extension"
   }
 
-  @Suppress("MoveVariableDeclarationIntoWhen")
   private fun getFullFileUri(
     chanPostImage: ChanPostImage,
     imageSaverV2Options: ImageSaverV2Options,
@@ -635,19 +633,11 @@ class ImageSaverV2ServiceDelegate(
       segments += DirectorySegment(postDescriptor.boardDescriptor().boardCode)
     }
 
-    if (imageSaverV2Options.appendThreadId) {
-      segments += DirectorySegment(postDescriptor.getThreadNo().toString())
-    }
-
-    if (imageSaverV2Options.appendThreadSubject) {
-      val threadSubject = chanThreadManager.getSafeToUseThreadSubject(
-        chanPostImage.ownerPostDescriptor.threadDescriptor()
-      )
-
-      if (threadSubject.isNotNullNorBlank()) {
-        segments += DirectorySegment(StringUtils.dirNameRemoveBadCharacters(threadSubject)!!)
-      }
-    }
+    segments += appendThreadIdOrSubject(
+      imageSaverV2Options = imageSaverV2Options,
+      postDescriptor = postDescriptor,
+      chanPostImage = chanPostImage
+    )
 
     if (imageSaverV2Options.subDirs.isNotNullNorBlank()) {
       val subDirs = imageSaverV2Options.subDirs!!.split('\\')
@@ -688,13 +678,6 @@ class ImageSaverV2ServiceDelegate(
     // of imageDownloadRequest
     if (duplicatesResolution == ImageSaverV2Options.DuplicatesResolution.AskWhatToDo) {
       duplicatesResolution = imageDownloadRequest.duplicatesResolution
-    }
-
-    // Do not process images with the same name, size and hash as the local ones
-    val areImagesExactlyTheSame = areImagesExactlyTheSame(chanPostImage, resultFile)
-    if (areImagesExactlyTheSame) {
-      val fileIsNotEmpty = fileManager.getLength(resultFile) > 0
-      return ResultFile.Skip(resultDirUri, resultFileUri, fileIsNotEmpty)
     }
 
     when (duplicatesResolution) {
@@ -740,22 +723,41 @@ class ImageSaverV2ServiceDelegate(
     )
   }
 
-  private fun areImagesExactlyTheSame(
-    chanPostImage: ChanPostImage,
-    resultFile: AbstractFile
-  ): Boolean {
-    if (chanPostImage.size != fileManager.getLength(resultFile)) {
-      return false
+  private fun appendThreadIdOrSubject(
+    imageSaverV2Options: ImageSaverV2Options,
+    postDescriptor: PostDescriptor,
+    chanPostImage: ChanPostImage
+  ): List<DirectorySegment> {
+    val segments = mutableListOf<DirectorySegment>()
+
+    val threadSubject = chanThreadManager.getSafeToUseThreadSubject(
+      chanPostImage.ownerPostDescriptor.threadDescriptor()
+    )
+
+    if (imageSaverV2Options.appendThreadId
+      && imageSaverV2Options.appendThreadSubject
+      && threadSubject.isNotNullNorBlank()
+      ) {
+      val directoryName = buildString {
+        append(postDescriptor.getThreadNo().toString())
+        append("-")
+        append(StringUtils.dirNameRemoveBadCharacters(threadSubject)!!)
+      }
+
+      segments += DirectorySegment(directoryName)
+    } else {
+      if (imageSaverV2Options.appendThreadId) {
+        segments += DirectorySegment(postDescriptor.getThreadNo().toString())
+      }
+
+      if (imageSaverV2Options.appendThreadSubject) {
+        if (threadSubject.isNotNullNorBlank()) {
+          segments += DirectorySegment(StringUtils.dirNameRemoveBadCharacters(threadSubject)!!)
+        }
+      }
     }
 
-    if (chanPostImage.fileHash.isNullOrEmpty()) {
-      return false
-    }
-
-    val localFileMd5 = fileManager.getInputStream(resultFile)
-      ?.let { inputStream -> HashingUtil.inputStreamMd5(inputStream) }
-
-    return chanPostImage.fileHash.equals(localFileMd5, ignoreCase = true)
+    return segments
   }
 
   sealed class ResultFile {

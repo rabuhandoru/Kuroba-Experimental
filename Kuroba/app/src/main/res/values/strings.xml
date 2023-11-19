@@ -502,7 +502,8 @@ Usually that means that you forgot to remove a space from the beginning or the e
     <string name="reply_comment_thread">Comment reply</string>
     <string name="reply_comment_board">Comment new thread</string>
     <string name="reply_submit">Submit</string>
-    <string name="reply_error_message">Error posting: %s</string>
+    <string name="reply_error_message">Error posting:\n\n%s</string>
+    <string name="reply_error_unknown">Unknown error while trying to post:\n\n%s</string>
     <string name="reply_error_failed_to_process_dvach_anti_spam_locally">Failed to process dvach anti-spam, reason: %1$s.</string>
     <string name="reply_error_authentication_required">Authentication required</string>
     <string name="reply_comment_button_quote" translatable="false">&gt;</string>
@@ -528,7 +529,13 @@ Usually that means that you forgot to remove a space from the beginning or the e
     <string name="reply_mode_attempt_post_without_captcha">Attempt to post without captcha</string>
     <string name="reply_mode_post_with_captcha_solver">Post with captcha solver</string>
     <string name="reply_mode_post_with_passcode">Post with passcode</string>
-    <string name="reply_error_message_with_action">%1$s (Click for action)</string>
+    <string name="reply_donate_captcha_title">Captcha donation</string>
+    <string name="reply_donate_captcha_description">Would you like to donate your solved captchas to train a new model for captcha solver?\nYou can change this setting on the \'Experimental settings\' screen at any time.\n\nYou can find more info here:\nhttps://github.com/moffatman/chan/issues/144</string>
+    <string name="reply_donate_captcha_positive_button_text">Donate</string>
+    <string name="reply_donate_captcha_negative_button_text">Do not</string>
+    <string name="reply_layout_info_title">Information</string>
+    <string name="reply_layout_info_title_ban_info">Ban info</string>
+    <string name="reply_layout_info_title_warning_info">Warning info</string>
 
     <string name="delete_confirm">Delete your post?</string>
     <string name="delete_wait">Deleting post…</string>
@@ -731,7 +738,7 @@ Usually that means that you forgot to remove a space from the beginning or the e
     <string name="setting_update_colors_for_text_selection_cursor_description">Some devices behave weirdly when text selection cursor colors are changed (for example on some xiaomi devices they become stretched vertically). Disabling this setting will make the text selection cursor use the default theme\'s color (which is gray)</string>
     <string name="setting_custom_user_agent">Custom user agent</string>
     <string name="setting_custom_user_agent_description">By default, currently installed WebView\'s user-agent is used for all requests (and for CloudFlare bypass). But it may not work in some situations. So if you experience problems with bypassing CloudFlare try changing this setting. Set it to empty string to use the WebView\'s user agent again.</string>
-
+    <string name="setting_donate_captcha">Donate solved captcha to train captcha solver</string>
 
     <!-- Behavior general group -->
     <string name="settings_screen_behavior">Behavior</string>
@@ -812,7 +819,7 @@ Usually that means that you forgot to remove a space from the beginning or the e
     <string name="setting_video_auto_load">Automatically load videos/sound posts</string>
     <string name="settings_group_media_loading">Media loading</string>
     <string name="setting_image_auto_load_all">Always</string>
-    <string name="setting_image_auto_load_wifi">Wi-Fi only</string>
+    <string name="setting_image_auto_load_unmetered">Unmetered network only</string>
     <string name="setting_image_auto_load_none">Never</string>
     <string name="setting_auto_load_thread_images">Enable media prefetching</string>
     <string name="setting_auto_load_thread_images_description">Loads all images or videos in a thread immediately. Uses it\'s own setting for the cache size which is greater than the regular cache size. (⚠ May become the reason of high battery/network traffic/disk consumption ⚠)</string>
@@ -1322,6 +1329,7 @@ If you ever log out or if the passcode expires you will have to change reply mod
     <string name="post_service_processing">Processing replies</string>
     <string name="post_service_processing_count">Processing %1$d replies</string>
     <string name="post_service_response_probably_banned">You are probably banned</string>
+    <string name="post_service_response_probably_warned">You are probably warned</string>
     <string name="post_service_response_authentication_required">Authentication required</string>
     <string name="post_service_response_dvach_antispam_detected">Dvach anti-spam script detected</string>
     <string name="post_service_response_unknown_error">Unknown error</string>
@@ -1562,6 +1570,7 @@ Actual error: \'%1$s\'</string>
     <string name="crash_report_activity_crash_stacktrace_section">Crash stacktrace</string>
     <string name="crash_report_activity_crash_logs_section">Last logs before the crash</string>
     <string name="crash_report_activity_additional_info_section">Additional information</string>
+    <string name="crash_report_activity_copy_for_github">Copy formatted for Github</string>
     <string name="crash_report_activity_loading_logs">Loading logs…</string>
     <string name="crash_report_activity_verbose_logs">+Verbose logs</string>
     <string name="crash_report_activity_mpv_logs">+MPV logs</string>
@@ -1603,5 +1612,8 @@ Actual error: \'%1$s\'</string>
     <string name="archives_end_reached">End reached</string>
     <string name="failed_post_find_post_to_scroll_to">Failed to find post to scroll to (postNo=\'%1$d\')</string>
     <string name="ssl_error">SSL error</string>
+
+    <string name="api_33_android_13_notifications_permission_title">Api 33 (Android 13+) notifications permission</string>
+    <string name="api_33_android_13_notifications_permission_descriptor">Api 33 (Android 13+) requires applications to request for a permission to display notifications. Without this permission some application features may not work correctly (posting, media downloading, reply notifications, thread last page notifications, etc).\n\nYou can always enable this manually in Android OS application settings.</string>
 
 </resources>

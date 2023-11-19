@@ -164,8 +164,9 @@ public class ChanSettings {
     public enum NetworkContentAutoLoadMode implements OptionSettingItem {
         // Always auto load, either wifi or mobile
         ALL("all"),
-        // Only auto load if on wifi
-        WIFI("wifi"),
+        // Only auto load if on unmetered network (the setting name is still the same
+        // for backward compatibility)
+        UNMETERED("wifi"),
         // Never auto load
         NONE("none");
 
@@ -237,6 +238,24 @@ public class ChanSettings {
         public int chunksCount() {
             return chunksCount;
         }
+    }
+
+    public enum NullableBoolean implements OptionSettingItem {
+        True("True"),
+        False("False"),
+        Undefined("Undefined");
+
+        String name;
+
+        NullableBoolean(String name) {
+            this.name = name;
+        }
+
+        @Override
+        public String getKey() {
+            return name;
+        }
+
     }
 
     //region Declarations
@@ -391,6 +410,7 @@ public class ChanSettings {
     public static BooleanSetting mpvUseConfigFile;
     public static BooleanSetting colorizeTextSelectionCursors;
     public static StringSetting customUserAgent;
+    public static OptionsSetting<NullableBoolean> donateSolvedCaptchaForGreaterGood;
     //endregion
 
     //region OTHER
@@ -440,6 +460,7 @@ public class ChanSettings {
     public static BooleanSetting markDeletedPostsOnScrollbar;
     public static BooleanSetting markHotPostsOnScrollbar;
     public static BooleanSetting globalNsfwMode;
+    public static BooleanSetting api33NotificationPermissionRequested;
     //endregion
     //endregion
 
@@ -504,8 +525,8 @@ public class ChanSettings {
             postFullDate = new BooleanSetting(provider, "preference_post_full_date", false);
             postFullDateUseLocalLocale = new BooleanSetting(provider, "preference_post_full_date_use_local_locale", false);
             postFileInfo = new BooleanSetting(provider, "preference_post_file_name", true);
-            catalogPostAlignmentMode = new OptionsSetting<>(provider, "catalog_post_alignment_mode", PostAlignmentMode.class, PostAlignmentMode.AlignLeft);
-            threadPostAlignmentMode = new OptionsSetting<>(provider, "thread_post_alignment_mode", PostAlignmentMode.class, PostAlignmentMode.AlignLeft);
+            catalogPostAlignmentMode = new OptionsSetting<>(provider, "catalog_post_alignment_mode", PostAlignmentMode.class, PostAlignmentMode.AlignRight);
+            threadPostAlignmentMode = new OptionsSetting<>(provider, "thread_post_alignment_mode", PostAlignmentMode.class, PostAlignmentMode.AlignRight);
             postThumbnailScaling = new OptionsSetting<>(provider, "post_thumbnail_scaling", PostThumbnailScaling.class, PostThumbnailScaling.FitCenter);
             drawPostThumbnailBackground = new BooleanSetting(provider, "draw_post_thumbnail_background", true);
             textOnly = new BooleanSetting(provider, "preference_text_only", false);
@@ -527,19 +548,19 @@ public class ChanSettings {
                     provider,
                     "parse_youtube_titles_and_duration_v2",
                     NetworkContentAutoLoadMode.class,
-                    NetworkContentAutoLoadMode.WIFI
+                    NetworkContentAutoLoadMode.UNMETERED
             );
             parseSoundCloudTitlesAndDuration = new OptionsSetting<>(
                     provider,
                     "parse_soundcloud_titles_and_duration",
                     NetworkContentAutoLoadMode.class,
-                    NetworkContentAutoLoadMode.WIFI
+                    NetworkContentAutoLoadMode.UNMETERED
             );
             parseStreamableTitlesAndDuration = new OptionsSetting<>(
                     provider,
                     "parse_streamable_titles_and_duration",
                     NetworkContentAutoLoadMode.class,
-                    NetworkContentAutoLoadMode.WIFI
+                    NetworkContentAutoLoadMode.UNMETERED
             );
             showLinkAlongWithTitleAndDuration = new BooleanSetting(provider, "show_link_along_with_title_and_duration", true);
 
@@ -571,7 +592,7 @@ public class ChanSettings {
 
             // Post
             volumeKeysScrolling = new BooleanSetting(provider, "preference_volume_key_scrolling", false);
-            tapNoReply = new BooleanSetting(provider, "preference_tap_no_reply", false);
+            tapNoReply = new BooleanSetting(provider, "preference_tap_no_reply", true);
             postLinksTakeWholeHorizSpace = new BooleanSetting(provider, "post_links_take_whole_horiz_space", true);
             markUnseenPosts = new BooleanSetting(provider, "preference_mark_unseen_posts", true);
             markSeenThreads = new BooleanSetting(provider, "preference_mark_seen_threads", true);
@@ -599,12 +620,12 @@ public class ChanSettings {
             imageAutoLoadNetwork = new OptionsSetting<>(provider,
                     "preference_image_auto_load_network",
                     NetworkContentAutoLoadMode.class,
-                    NetworkContentAutoLoadMode.WIFI
+                    NetworkContentAutoLoadMode.UNMETERED
             );
             videoAutoLoadNetwork = new OptionsSetting<>(provider,
                     "preference_video_auto_load_network",
                     NetworkContentAutoLoadMode.class,
-                    NetworkContentAutoLoadMode.WIFI
+                    NetworkContentAutoLoadMode.UNMETERED
             );
 
             // Misc
@@ -636,6 +657,12 @@ public class ChanSettings {
             useMpvVideoPlayer = new BooleanSetting(provider, "use_mpv_video_player", false);
             mpvUseConfigFile = new BooleanSetting(provider, "mpv_use_config_file", false);
             colorizeTextSelectionCursors = new BooleanSetting(provider, "colorize_text_selection_cursors", true);
+            donateSolvedCaptchaForGreaterGood = new OptionsSetting<>(
+                    provider,
+                    "donate_solved_captcha_for_greater_good",
+                    NullableBoolean.class,
+                    NullableBoolean.Undefined
+            );
             customUserAgent = new StringSetting(provider, "custom_user_agent", "");
             //endregion
 
@@ -734,6 +761,7 @@ public class ChanSettings {
             drawerDeleteBookmarksWhenDeletingNavHistory = new BooleanSetting(provider, "drawer_delete_bookmarks_when_deleting_nav_history", false);
             drawerDeleteNavHistoryWhenBookmarkDeleted = new BooleanSetting(provider, "drawer_delete_nav_history_when_bookmark_deleted", false);
             globalNsfwMode = new BooleanSetting(provider, "global_nsfw_mode", false);
+            api33NotificationPermissionRequested = new BooleanSetting(provider, "api33_notification_permission_requested", false);
         } catch (Throwable error) {
             // If something crashes while the settings are initializing we at least will have the
             // stacktrace. Otherwise we won't because of Feather.

@@ -1,9 +1,12 @@
 apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
 apply plugin: 'kotlin-kapt'
+apply plugin: 'com.google.devtools.ksp'
 
 android {
-    compileSdkVersion 32
+    namespace "com.github.k1rakishou.chan"
+
+    compileSdk 33
 
     defaultConfig {
         minSdkVersion 21
@@ -20,11 +23,11 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
     kotlinOptions {
-        jvmTarget = '1.8'
+        jvmTarget = '17'
     }
 }
 
@@ -41,7 +44,7 @@ dependencies {
     implementation "com.google.code.gson:gson:${versions.gson}"
 
     implementation("com.squareup.moshi:moshi-kotlin:${versions.moshi}")
-    kapt("com.squareup.moshi:moshi-kotlin-codegen:${versions.moshi}")
+    ksp("com.squareup.moshi:moshi-kotlin-codegen:${versions.moshi}")
 
     implementation "com.google.dagger:dagger:${versions.dagger_version}"
     kapt "com.google.dagger:dagger-compiler:${versions.dagger_version}"

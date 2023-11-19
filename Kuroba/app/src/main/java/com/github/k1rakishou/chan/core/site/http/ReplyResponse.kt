@@ -17,6 +17,7 @@
 package com.github.k1rakishou.chan.core.site.http
 
 import com.github.k1rakishou.chan.features.posting.LastReplyRepository
+import com.github.k1rakishou.chan.ui.captcha.CaptchaSolution
 import com.github.k1rakishou.model.data.descriptor.PostDescriptor
 import com.github.k1rakishou.model.data.descriptor.PostDescriptor.Companion.create
 import com.github.k1rakishou.model.data.descriptor.SiteDescriptor
@@ -30,7 +31,7 @@ class ReplyResponse {
   @JvmField
   @get:Synchronized
   @set:Synchronized
-  var errorMessage: String? = null
+  var errorMessage: CharSequence? = null
 
   @JvmField
   @get:Synchronized
@@ -60,7 +61,7 @@ class ReplyResponse {
   @JvmField
   @get:Synchronized
   @set:Synchronized
-  var probablyBanned = false
+  var banInfo: BanInfo? = null
 
   @get:Synchronized
   @set:Synchronized
@@ -68,19 +69,23 @@ class ReplyResponse {
 
   @get:Synchronized
   @set:Synchronized
-  var additionalResponseData: AdditionalResponseData = ReplyResponse.AdditionalResponseData.NoOp
+  var additionalResponseData: AdditionalResponseData = AdditionalResponseData.NoOp
 
   @get:Synchronized
   @set:Synchronized
   var rateLimitInfo: RateLimitInfo? = null
 
-  val errorMessageShort: String?
+  @get:Synchronized
+  @set:Synchronized
+  var captchaSolution: CaptchaSolution? = null
+
+  val errorMessageShort: CharSequence?
     get() = errorMessage?.take(256)
 
   @get:Synchronized
   val postDescriptorOrNull: PostDescriptor?
     get() {
-      if (probablyBanned || requireAuthentication || postNo <= 0L || threadNo <= 0) {
+      if (banInfo != null || requireAuthentication || postNo <= 0L || threadNo <= 0) {
         return null
       }
 
@@ -99,7 +104,7 @@ class ReplyResponse {
     other.threadNo,
     other.postNo,
     other.password,
-    other.probablyBanned,
+    other.banInfo,
     other.requireAuthentication,
     other.additionalResponseData,
     other.rateLimitInfo,
@@ -107,13 +112,13 @@ class ReplyResponse {
 
   constructor(
     posted: Boolean,
-    errorMessage: String?,
+    errorMessage: CharSequence?,
     siteDescriptor: SiteDescriptor?,
     boardCode: String,
     threadNo: Long,
     postNo: Long,
     password: String,
-    probablyBanned: Boolean,
+    banInfo: BanInfo?,
     requireAuthentication: Boolean,
     additionalResponseData: AdditionalResponseData,
     rateLimitInfo: RateLimitInfo?
@@ -125,24 +130,42 @@ class ReplyResponse {
     this.threadNo = threadNo
     this.postNo = postNo
     this.password = password
-    this.probablyBanned = probablyBanned
+    this.banInfo = banInfo
     this.requireAuthentication = requireAuthentication
     this.additionalResponseData = additionalResponseData
     this.rateLimitInfo = rateLimitInfo
   }
 
-  sealed class AdditionalResponseData {
-    object NoOp : AdditionalResponseData() {
-      override fun toString(): String {
-        return "NoOp"
+  fun asFormattedText(): String {
+    return buildString(capacity = 128) {
+      appendLine("ThreadId: ${siteDescriptor?.siteName}/${boardCode}/${threadNo}/${postNo}")
+      appendLine("Posted: ${posted}")
+      appendLine("RequireAuthentication: ${requireAuthentication}")
+      appendLine("Password: ${password}")
+      appendLine("BanInfo: ${banInfo}")
+      appendLine("RequireAuthentication: ${requireAuthentication}")
+      appendLine("ErrorMessage: ${errorMessageShort}")
+      appendLine("RateLimitInfo: ${rateLimitInfo}")
+
+      if (additionalResponseData !is AdditionalResponseData.NoOp) {
+        appendLine("AdditionalResponseData: ${additionalResponseData}")
       }
     }
+  }
+
+  sealed class AdditionalResponseData {
+    data object NoOp : AdditionalResponseData()
   }
 
   data class RateLimitInfo(
     val actualTimeToWaitMs: Long,
     val cooldownInfo: LastReplyRepository.CooldownInfo
   )
+
+  sealed interface BanInfo {
+    data object Banned : BanInfo
+    data object Warned : BanInfo
+  }
 
   override fun toString(): String {
     return "ReplyResponse{" +
@@ -153,10 +176,11 @@ class ReplyResponse {
       ", threadNo=" + threadNo +
       ", postNo=" + postNo +
       ", password='" + password + '\'' +
-      ", probablyBanned=" + probablyBanned +
+      ", banInfo=" + banInfo +
       ", requireAuthentication=" + requireAuthentication +
       ", rateLimitInfo=" + rateLimitInfo +
       ", additionalResponseData=" + additionalResponseData +
       '}'
   }
+
 }

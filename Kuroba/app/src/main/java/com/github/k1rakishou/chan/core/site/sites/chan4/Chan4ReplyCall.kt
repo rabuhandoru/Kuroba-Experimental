@@ -16,7 +16,10 @@
  */
 package com.github.k1rakishou.chan.core.site.sites.chan4
 
+import android.text.SpannableStringBuilder
 import android.text.TextUtils
+import androidx.core.text.set
+import com.github.k1rakishou.ChanSettings
 import com.github.k1rakishou.chan.core.manager.ReplyManager
 import com.github.k1rakishou.chan.core.repository.BoardFlagInfoRepository
 import com.github.k1rakishou.chan.core.site.Site
@@ -28,9 +31,12 @@ import com.github.k1rakishou.chan.features.posting.LastReplyRepository
 import com.github.k1rakishou.chan.features.reply.data.ReplyFile
 import com.github.k1rakishou.chan.features.reply.data.ReplyFileMeta
 import com.github.k1rakishou.chan.ui.captcha.CaptchaSolution
+import com.github.k1rakishou.chan.utils.WebViewLink
 import com.github.k1rakishou.common.ModularResult
 import com.github.k1rakishou.common.StringUtils.formatToken
+import com.github.k1rakishou.common.fixUrlOrNull
 import com.github.k1rakishou.common.groupOrNull
+import com.github.k1rakishou.common.isNotNullNorBlank
 import com.github.k1rakishou.common.isNotNullNorEmpty
 import com.github.k1rakishou.core_logger.Logger
 import com.github.k1rakishou.model.data.descriptor.ChanDescriptor
@@ -44,6 +50,9 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.Response
 import org.jsoup.Jsoup
+import org.jsoup.nodes.Element
+import org.jsoup.nodes.Node
+import org.jsoup.nodes.TextNode
 import java.io.IOException
 import java.util.*
 import java.util.regex.Matcher
@@ -57,6 +66,10 @@ class Chan4ReplyCall(
   private val replyManager: Lazy<ReplyManager>,
   private val boardFlagInfoRepository: Lazy<BoardFlagInfoRepository>
 ) : CommonReplyHttpCall(site, replyChanDescriptor) {
+
+  @get:Synchronized
+  @set:Synchronized
+  private var captchaSolution: CaptchaSolution? = null
 
   @Throws(IOException::class)
   override fun addParameters(
@@ -106,6 +119,8 @@ class Chan4ReplyCall(
             formBuilder.addFormDataPart("t-response", captchaSolution.solution)
           }
         }
+
+        this.captchaSolution = reply.captchaSolution
       }
 
       if (site is Chan4) {
@@ -141,6 +156,17 @@ class Chan4ReplyCall(
   override fun process(response: Response, result: String) {
     setChan4CaptchaHeader(response.headers)
 
+    if (ChanSettings.verboseLogs.get()) {
+      Logger.d(TAG, "process() result:")
+
+      result
+        .filter { char -> char != '\n' }
+        .chunked(256)
+        .forEach { chunk ->
+          Logger.d(TAG, chunk)
+        }
+    }
+
     val forgotCaptcha = result.contains(FORGOT_TO_SOLVE_CAPTCHA, ignoreCase = true)
     val mistypedCaptcha = result.contains(MISTYPED_CAPTCHA, ignoreCase = true)
 
@@ -150,11 +176,11 @@ class Chan4ReplyCall(
       return
     }
 
-    val errorMessageMatcher = ERROR_MESSAGE_PATTERN.matcher(result)
-    if (errorMessageMatcher.find()) {
-      val errorMessage = Jsoup.parse(errorMessageMatcher.group(1)).body().text()
+    val errorMessageHtml = Jsoup.parse(result).selectFirst("span[id=errmsg]")
+    if (errorMessageHtml != null) {
+      val errorMessage = parseErrorMessageHtml(errorMessageHtml)
       replyResponse.errorMessage = errorMessage
-      replyResponse.probablyBanned = checkIfBanned()
+      replyResponse.banInfo = checkIfBanned()
 
       Logger.e(TAG, "process() error (errorMessage=${errorMessage})")
 
@@ -216,11 +242,46 @@ class Chan4ReplyCall(
 
     if (replyResponse.threadNo > 0 && replyResponse.postNo > 0) {
       replyResponse.posted = true
+      replyResponse.captchaSolution = this.captchaSolution
       return
     }
 
     Logger.e(TAG, "process() Failed to handle server response. response: \"$result\"")
     replyResponse.errorMessage = "Failed to handle server response. Report this with logs attached!"
+  }
+
+  private fun parseErrorMessageHtml(errorMessageHtml: Element): CharSequence {
+    val builder = SpannableStringBuilder()
+    parseErrorMessageHtmlInternal(builder, errorMessageHtml)
+    return builder
+  }
+
+  private fun parseErrorMessageHtmlInternal(
+    builder: SpannableStringBuilder,
+    currentNode: Node
+  ) {
+    for (node in currentNode.childNodes()) {
+      if (node is TextNode) {
+        builder.append(node.text())
+        continue
+      }
+
+      if (node is Element) {
+        val tagName = node.tagName().lowercase()
+        if (tagName == "a") {
+          val start = builder.length
+          parseErrorMessageHtmlInternal(builder, node)
+          val end = builder.length
+
+          val link = fixUrlOrNull(node.attr("href").takeIf { it.isNotBlank() })
+          if (end > start && link.isNotNullNorBlank()) {
+            builder.set(start, end, WebViewLink(WebViewLink.Type.BanMessage, link.toString()))
+          }
+        } else if (tagName == "br") {
+          builder.append("\n")
+        }
+      }
+    }
   }
 
   private fun setChan4CaptchaHeader(headers: Headers) {
@@ -249,8 +310,11 @@ class Chan4ReplyCall(
       ?.substringAfter(DOMAIN_PREFIX)
       ?.substringBefore(';')
 
+    val headersDebugString = headers.joinToString(separator = ";") { (key, value) -> "${key}=${value}" }
+
     Logger.d(TAG, "setChan4CaptchaHeader() newCookie='${newCookie}', " +
-      "domain='${domain}', wholeCookieHeader='${wholeCookieHeader}'")
+      "domain='${domain}', wholeCookieHeader='${wholeCookieHeader}', " +
+      "headersDebugString='${headersDebugString}'")
 
     if (domain == null) {
       Logger.d(TAG, "setChan4CaptchaHeader() domain is null")
@@ -306,20 +370,29 @@ class Chan4ReplyCall(
     return ReplyResponse.RateLimitInfo(currentPostingCooldownMs, cooldownInfo)
   }
 
-  private fun checkIfBanned(): Boolean {
+  private fun checkIfBanned(): ReplyResponse.BanInfo? {
     val errorMessage = replyResponse.errorMessage
-      ?: return false
+      ?: return null
 
     val isBannedFound = errorMessage.contains(PROBABLY_BANNED_TEXT)
     if (isBannedFound) {
-      return true
+      return ReplyResponse.BanInfo.Banned
+    }
+
+    val isWarnedFound = errorMessage.contains(PROBABLY_WARNED_TEXT)
+    if (isWarnedFound) {
+      return ReplyResponse.BanInfo.Warned
     }
 
     if (!replyChanDescriptor.siteDescriptor().is4chan()) {
-      return false
+      return null
     }
 
-    return errorMessage.contains(PROBABLY_IP_RANGE_BLOCKED)
+    if (errorMessage.contains(PROBABLY_IP_RANGE_BLOCKED)) {
+      return ReplyResponse.BanInfo.Banned
+    }
+
+    return null
   }
 
   private fun attachFile(
@@ -347,6 +420,7 @@ class Chan4ReplyCall(
     private const val TAG = "Chan4ReplyCall"
 
     private const val PROBABLY_BANNED_TEXT = "banned"
+    private const val PROBABLY_WARNED_TEXT = "warned"
     private const val PROBABLY_IP_RANGE_BLOCKED = "Posting from your IP range has been blocked due to abuse"
     private const val FORGOT_TO_SOLVE_CAPTCHA = "Error: You forgot to solve the CAPTCHA"
     private const val MISTYPED_CAPTCHA = "Error: You seem to have mistyped the CAPTCHA"
@@ -356,7 +430,6 @@ class Chan4ReplyCall(
     private const val DOMAIN_PREFIX = "domain="
 
     private val THREAD_NO_PATTERN = Pattern.compile("<!-- thread:([0-9]+),no:([0-9]+) -->")
-    private val ERROR_MESSAGE_PATTERN = Pattern.compile("\"errmsg\"[^>]*>(.*?)</span")
 
     // Error: You must wait 1 minute 17 seconds before posting a duplicate reply.
     // Error: You must wait 2 minutes 1 second before posting a duplicate reply.
